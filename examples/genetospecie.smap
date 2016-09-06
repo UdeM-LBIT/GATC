@@ -1,0 +1,10 @@
+^Thecc[0-9]+.*	Thecc
+^tom.*	tom
+^C[cC][0-9].*	CC0
+^rha.*	rha
+^cra.*	cra
+^rsa.*	rsa
+^[cC]atharan.*	cra
+.*coffee.*	CC0
+.*tomat.*	tom
+^[Rr]auvo.*	rsa

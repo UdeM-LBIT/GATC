@@ -13,6 +13,10 @@ from ..TreeLib import TreeClass
 from Bio import AlignIO
 
 
+def get_rid_of(listfile):
+    for f in listfile:
+        os.remove(f)
+    
 
 def calculate_likelihood(cmd, title, basedir=os.getcwd()):
     cmd = cmd+ "-n %s -w %s" % (title, os.path.abspath(basedir))
@@ -20,8 +24,7 @@ def calculate_likelihood(cmd, title, basedir=os.getcwd()):
     infofiles = glob.glob("%s/RAxML*.%s" % (basedir,title))
     f = [x for x in infofiles if 'info' in x][0]
     likelihoods = extractRAXMLikelihood(f, 1)[0]
-    for f in infofiles:
-        os.remove(f)
+    get_rid_of(infofiles)
     return likelihoods
         
 
@@ -62,6 +65,7 @@ class LklModel():
         self.title  = title
         self.extra = extra_string 
         self.currLH = 0
+        get_rid_of(glob.glob("%s/RAxML*.%s" % (os.getcwd(),title)))
 
     def optimize_model(self, gtree, **args):
         """Optimizes the RAxML model"""

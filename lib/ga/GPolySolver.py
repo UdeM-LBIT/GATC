@@ -1,6 +1,7 @@
 from pyevolve.GenomeBase import GenomeBase
 from collections import Counter, defaultdict as ddict
 import numpy as np
+import random
 import hashlib
 from itertools import permutations, product
 from ..TreeLib import TreeClass
@@ -92,7 +93,7 @@ class Utils:
         find_root = False
         for node in tree.iter_descendants("levelorder"):
             leafset1 = set(node.get_leaves())
-            leafset2 = set(tree.get_leaves()) - part1
+            leafset2 = set(tree.get_leaves()) - leafset1
             part1 =  [x.species for x in leafset1]
             part2 =  [x.species for x in leafset2]
             importance = 1
@@ -112,8 +113,7 @@ class Utils:
         # if it's empty, then the list only contains abs(btype-1)
         if not new_cands:
             new_cands = candbranch     
-
-        selected_branch = np.random.choice(new_cands)
+        selected_branch = random.choice(new_cands)
         return selected_branch
     
     @staticmethod
@@ -121,41 +121,49 @@ class Utils:
         branch, nodelist = br
         g1_list = []
         g2_list = []
+        rf = g1.tree.robinson_foulds(g2.tree)
         for x  in nodelist:
             if x[-1] == 0:
                 g1_list.append(x[0])
             else:
                 g2_list.append(x[0])
-            
-        g1swap = g1.tree.get_common_ancestor(np.random.choice(g1_list))
-        g2swap = g2.tree.get_common_ancestor(np.random.choice(g2_list))
-       
+        x = np.random.choice(g1_list)
+        y = np.random.choice(g2_list)
+        g1swap = set.pop(x) if len(x)==1 else g1.tree.get_common_ancestor(x) 
+        g2swap = set.pop(y) if len(y)==1 else g2.tree.get_common_ancestor(y)
         g1_parent = g1swap.up
         g2_parent = g2swap.up
 
         # fix problem due to same name multiple time
-        g1_swapper = ddict(list)
-        g2_swapper = ddict(list)
-        not_in_g1_swapper = set(g1.tree) - set(g1_swapper)
-        for n in not_in_g1_swapper:
-            g1_swapper[n.species].append(n)
-
-        not_in_g2_swapper = list(set(g2.tree) - set(g2_swapper))
-        for n in not_in_g2_swapper:
-            g2_swapper[n.species].append(n)
-
 
         swap_spec, g1_nname = zip(*[(x.species, x.name) for x in g1swap])
-        g2_nname = [x.name for x in g2swap]
-        for spec in set(swap_spec):
-            cand_replace1, cand_replace2 = set(g1_nname) - set(g2_nname), set(g2_nname) - set(g1_nname) 
-            for n in g1_swapper[spec]:
-                if n.name in g2_nname:
-                    n.name = set.pop(cand_replace1)
-            for n in g2_swapper[spec]:
-                if n.name in g1_nname:
-                    n.name = set.pop(cand_replace2)     
-       
+        g2_nname = set([x.name for x in g2swap])
+        g1_nname = set(g1_nname)
+        #print g1swap.robinson_foulds(g2swap)
+        if g2_nname^g1_nname:
+            # attempt to correct repeated leaves
+            g1_swapper = ddict(list)
+            g2_swapper = ddict(list)
+            not_in_g1_swapper = set(g1.tree) - set(g1swap)
+            for n in not_in_g1_swapper:
+                g1_swapper[n.species].append(n)
+
+            not_in_g2_swapper = list(set(g2.tree) - set(g2swap))
+            for n in not_in_g2_swapper:
+                g2_swapper[n.species].append(n)
+
+            for spec in set(swap_spec):
+                tmp1_n = set([x.name for x in g1_swapper[spec]])
+                tmp2_n = set([x.name for x in g2_swapper[spec]])
+                tmp1_n, tmp2_n = tmp2_n - tmp1_n, tmp1_n - tmp2_n  
+                
+                for n in g1_swapper[spec]:
+                    if n.name in g2_nname:
+                        n.name = set.pop(tmp1_n)
+                for n in g2_swapper[spec]:
+                    if n.name in g1_nname:
+                        n.name = set.pop(tmp2_n)     
+        
         g2_parent.add_child(g1swap.detach())
         g1_parent.add_child(g2swap.detach())
         return g1, g2
@@ -189,6 +197,7 @@ class Utils:
     def crossover(genome, **args):
         gdad = args['dad']
         gmom = args['mom']
+        rf = gdad.tree.robinson_foulds(gmom.tree)
         genome1 = gdad.clone()
         genome2 = gmom.clone()
         prob = max(genome1.intbrnp, genome2.intbrnp)
@@ -270,6 +279,12 @@ class GPolySolver(GenomeBase):
         if not self.is_init:
             for it in self.initializator.applyFunctions(self, **args):
                 pass
+        else:
+            for spec, names in GPolySolver.gmap.items(): 
+                for name in names:
+                    (self.tree&name).add_features(species=spec)
+
+
 
     def copy(self, g):
         """ Copy the current GenomeBase to 'g'

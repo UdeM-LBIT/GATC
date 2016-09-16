@@ -21,7 +21,7 @@ if sys.platform != 'darwin':
 
 srcs = [os.path.join('src/raxml',fn) for fn in os.listdir('src/raxml')
         if (not os.path.isdir(fn)) and fn.endswith('.c')]
-raxml_module = Extension('raxmlib._raxml',
+raxml_module = Extension('lib.raxmlib._raxml',
                          sources=['lib/raxmlib/raxml.i'] + srcs,
                          extra_link_args=extra_link_args
                          )
@@ -46,10 +46,7 @@ setup(
         'Topic :: Education',
         ],
 
-    package_dir = {'': 'lib'},
-    packages=['TreeLib',
-              'raxmlib',
-              'ga'],
+    packages=['lib', 'lib.TreeLib', 'lib.raxmlib', 'lib.ga'],
     py_modules=[],
     scripts=['bin/gaperm'],
     install_requires=['pyevolve', 'scipy', 'numpy', 'ete3', 'biopython'],

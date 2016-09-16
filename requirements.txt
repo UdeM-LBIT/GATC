@@ -1,0 +1,6 @@
+git+https://github.com/maclandrol/Pyevolve
+biopython==1.65
+ete3
+matplotlib==1.5.1
+numpy>=1.8.1
+scipy>=0.14.0

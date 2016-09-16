@@ -1,4 +1,8 @@
 *db
 build/
-gaperm
+./gaperm
 .vscode/
+*png
+*jpg
+RAxML*
+*pyc

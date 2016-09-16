@@ -52,5 +52,6 @@ setup(
               'ga'],
     py_modules=[],
     scripts=['bin/gaperm'],
+    install_requires=['pyevolve', 'scipy', 'numpy', 'ete3', 'biopython'],
     ext_modules=[raxml_module]
     )

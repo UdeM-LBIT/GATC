@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 from lib import *
-import argparse
+from  argparse import ArgumentTypeError, ArgumentParser
 import re, time
 from Bio import AlignIO
 from collections import defaultdict
@@ -12,6 +12,7 @@ from pyevolve import DBAdapters
 from pyevolve import Consts
 from distutils import spawn
 from heapq import heappop
+from functools import partial
 import scipy.stats as ss
 
 expected_nuc = set(['N', 'A', 'T', 'C', 'G'])
@@ -107,7 +108,7 @@ def perform_perm(treelist, raxmlmod, specmap, treelimit=5, timelimit=None):
     return [heapop(trees) for i in range(len(trees))]
 
 
-def evolve_ga(treelist, raxmlmod, specmap, ngen, popsize, freqstat, hasleaf=False, timelimit=None, verbose=False):
+def evolve_ga(treelist, raxmlmod, specmap, ngen, popsize, freqstat, hasleaf=False, timelimit=None, step=False, verbose=False, termcrit=None):
     genomes = [GPolySolver(x, raxmlmod, is_init=hasleaf) for x in treelist]
     GPolySolver.setGeneMap(specmap)
     gpop = GPopulation.GPopulation(genomes, single=False)
@@ -121,9 +122,14 @@ def evolve_ga(treelist, raxmlmod, specmap, ngen, popsize, freqstat, hasleaf=Fals
     ga.setPopulationSize(popsize)
     if timelimit and isinstance(timelimit, float):
         ga.setMaxTime(int(args.timelim*60))
-    ga.terminationCriteria.set(GSimpleGA.ConvergenceCriteria)
-    if verbose:
-        ga.stepCallback.set(stepcallback)
+    
+    if termcrit:
+        ga.terminationCriteria.set(termcrit)
+    else:
+        ga.terminationCriteria.set(GSimpleGA.ConvergenceCriteria)
+
+    if step or verbose:
+        ga.stepCallback.set(partial(stepcallback, verbose))
 
     # Sets the DB Adapter, the resetDB flag will make the Adapter recreate
     # the database and erase all data every run, you should use this flag
@@ -137,6 +143,10 @@ def evolve_ga(treelist, raxmlmod, specmap, ngen, popsize, freqstat, hasleaf=Fals
     return ga
 
 
+def buildconsensus(treelist):
+    # build consensus of a tree list
+    return NotImplemented
+
 def randomly_split(gpop, selection):
     part1 = np.random.choice(selection, len(selection)/2, replace=False)
     part2 = set(selection) - set(part1)
@@ -146,8 +156,7 @@ def randomly_split(gpop, selection):
         part2 = part2[:-1]
     return part1, part2
     
-
-def terminate_crit_fc(ga_engine, **args):
+def terminate_crit_fc(loop, thres, ga_engine):
     iloop = args.get('loop', 100)
     thresh = args.get('thres', 0.8)
     gpop =  ga_engine.getPopulation()
@@ -161,7 +170,8 @@ def terminate_crit_fc(ga_engine, **args):
             acc += 1
     return acc >= iloop - 1
 
-def terminate_crit_wc(ga_engine, **args):
+
+def terminate_crit_wc(loop, thres, ga_engine):
     # cs101 ==> lazy prgramming, copy pasta
     iloop = args.get('loop', 100)
     thresh = args.get('thres', 0.2)
@@ -179,22 +189,47 @@ def terminate_crit_wc(ga_engine, **args):
     return acc >= iloop - 1
 
 
-def stepcallback(ga_engine):
+def terminate_crit_mean(ga_engine):
+    # convergence based on distance between mean and max
+    stat = ga_engine.getStatistics()
+    best_ind = stat['rawMax']
+    avg_ind = stat['rawAve']
+    worst_ind = stat['rawMin']
+    return NotImplemented
+   
+def terminate_crit_sh_test(known_best, alpha, ga_engine):
+    # convergence based on distance between mean and max
+    ga_engine.ga.bestIndividual()
+    curtree = bestInd.tree
+    raxmlmod = bestInd.model
+    bestlk, treelk, sucess = raxmlmod.compute_lik_test(known_best, curtree, alpha=alpha)
+    if sucess:
+        return True
+    return False    
+
+def terminate_crit_conv(thresh, ga_engine):
+    # convergence based on distance between mean and maxbest 
+    global WORST_IND
+    if len(WORST_IND) < 2:
+        return False
+    else:
+        return abs(WORST_IND[-1] - WORST_IND[-2]) <= abs(thresh)    
+
+def stepcallback(verbose, ga_engine):
     global BEST_IND, AVG_IND, WORST_IND
     cur_best = ga_engine.bestIndividual()
     stat = ga_engine.getStatistics()
     BEST_IND.append(cur_best.getRawScore())
     WORST_IND.append(stat['rawMin'])
     AVG_IND.append(stat['rawAve'])
-    
-    print("\nCurrent generation : %d"% ga_engine.currentGeneration)
-    print("Population size : %d"% len(ga_engine.internalPop))
-    print("Best individual score : %f"%  stat['rawMax'])
-    print("Worst individual score : %f"%  stat['rawMin'])
-    print("Average individual score : %f"%  stat['rawAve'])
-    print("Std individual score : %f"%  stat['rawDev'])
-    return False
-    
+    if verbose:
+        print("\nCurrent generation : %d"% ga_engine.currentGeneration)
+        print("Population size : %d"% len(ga_engine.internalPop))
+        print("Best individual score : %f"%  stat['rawMax'])
+        print("Worst individual score : %f"%  stat['rawMin'])
+        print("Average individual score : %f"%  stat['rawAve'])
+        print("Std individual score : %f"%  stat['rawDev'])
+    return False  
 
 def print_output(treelist, outfile):
     outlog = Output("%s" % (outfile)) if outfile is not None else Output()
@@ -224,6 +259,15 @@ def fake_initialize(tree, gmap):
 def test_model(t, rmod):
     return rmod.optimize_model(t)   
 
+def float01(arg):
+    try:
+        f = float(arg)
+        if f < 0 or f > 1:
+            raise ValueError()
+    except:
+        raise ArgumentTypeError("'" + arg + "' is not a float in range(0,1)")
+    return f
+    
 
 #------------ main function -----------------
 
@@ -234,7 +278,7 @@ if __name__ == '__main__':
                 'tournament' : Selectors.GTournamentSelector, 
                 'rank': Selectors.GRankSelector,
                 'uniform': Selectors.GUniformSelector}
-    parser = argparse.ArgumentParser(prog='gaperm', description=DESC, version=VERSION)
+    parser = ArgumentParser(prog='gaperm', description=DESC, version=VERSION)
 
     parser.add_argument('--input', '-t', dest="trees", required=True, help="file containing the trees in profileNJ output format")
     parser.add_argument('--aln', '-s', dest="align", required=True, help="A sequence alignment file")
@@ -249,16 +293,20 @@ if __name__ == '__main__':
     parser.add_argument('--model', '-m', dest='raxmlmodel', help="Raxml model to use. If you do not provide this, it will guess your sequence type and use either GTRGAMMA or PROTGAMMALG")
     parser.add_argument('--eps',  dest='raxmleps', default=2.0, type=float, help="Raxml eps to use for likelihood computation")
     parser.add_argument('--extras',  dest='raxmlextra', default="", help="Raxml extra arguments")
-    
     parser.add_argument('--timelim', nargs='?', type=float, const=120, help="Set time limit in minutes")
    
-    galgo = parser.add_argument_group('Genetic algo', 'Use genetic algorithm to find the ')
+    galgo = parser.add_argument_group('Genetic algo', 'Use genetic algorithm to find the best permutation')
     galgo.add_argument('--gen', type=int, default=10, dest='ngen', help="Number of generations for the G.A.")
     galgo.add_argument('--popsize', type=int, default=0, dest='popsize', help="Genetic population size")
     galgo.add_argument('--freqrep', type=int, default=2, help="Number of generation before stat report")
     galgo.add_argument('--selector',  dest='selector', default="roulette", choices=selectors.keys(), help="Selector at each generation")
     galgo.add_argument('--besttree',  dest='mltree', help="Path to known best tree, given the sequences data")
     galgo.add_argument('--verbose', action="store_true", help="Print GA status at each step")
+    galgo.add_argument('--stopcrit', dest="stopcrit", default="CONV", choices=('CONV', 'FC', 'WC', 'SH', 'MEAN'), help="Stopping criterion")
+    galgo.add_argument('--alpha', default=0.05, type=float01, help="Alpha to use for the SH stopping criterion. Should be a float in ]0,1[")
+    galgo.add_argument('--cthresh', default=0.99, type=float01, help="Threshold for WC and FC stopping criterion, Should be a float in ]0,1[")
+    galgo.add_argument('--cloop', default=100, type=int, help="Number of iteration for WC and FC stopping criterion")
+    galgo.add_argument('--deltalkl', default=1, type=float, help="Maximum difference of score for CONV stopping criterion")
     galgo.add_argument('--plot_lkl', action='store_true', help="Plot best ind likelihood for each generation")
 
     permalgo = parser.add_argument_group('All permutation', 'Test all possibility for all input trees')
@@ -316,9 +364,25 @@ if __name__ == '__main__':
     if args.allsearch :
         time, res = perform_perm(treelist, raxmlmod, specmap, args.allsearch, args.timelim)
         print "time : %f , bestscore : %f" %(time, res[-1][0])
-        
     
     else:
+        # stopping criterion management
+        step = False
+        besttree = args.mltree
+        if args.stopcrit == 'CONV':
+            step = True
+        elif args.stopcrit == 'SH':
+            if not besttree:
+                raise ArgumentError("Best ML tree not found for SH stopping criterion")
+            else:
+                besttree = TreeClass(besttree)
+
+        stopping = {'CONV' :  partial(terminate_crit_conv, args.deltalkl),
+            'FC' :  partial(terminate_crit_fc, args.cloop, args.cthresh),
+            'WC' : partial(terminate_crit_wc, args.cloop, args.cthresh),
+            'SH' : partial(terminate_crit_sh_test, besttree, args.alpha),
+            'MEAN' : terminate_crit_mean
+        }
         if not args.popsize:
             args.popsize=len(treelist)
     
@@ -326,7 +390,7 @@ if __name__ == '__main__':
             raise ValueError("PopSize and Number of generation should be positive integer")
 
         ga = evolve_ga(treelist, raxmlmod, specmap, args.ngen,\
-                     args.popsize, args.freqrep, (not args.corleaf), args.timelim, args.verbose) 
+                     args.popsize, args.freqrep, (not args.corleaf), args.timelim, args.verbose, termcrit=stopping.get(args.stopcrit, None)) 
         #print ga.bestIndividual()
 
         if args.plot_lkl:

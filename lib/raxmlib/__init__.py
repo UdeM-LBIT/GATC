@@ -26,10 +26,60 @@ def calculate_likelihood(cmd, title, basedir=os.getcwd()):
     likelihoods = extractRAXMLikelihood(f, 1)[0]
     get_rid_of(infofiles)
     return likelihoods
-        
+
+def compute_sh_test(cmd, title, basedir=os.getcwd()):
+    cmd = cmd+ "-n %s -w %s" % (title, os.path.abspath(basedir))
+    rst = executeCMD(cmd)
+    infofiles = glob.glob("%s/RAxML*.%s" % (basedir,title))
+    f = [x for x in infofiles if 'info' in x][0]
+    results = extractSHTest(f)  
+    get_rid_of(infofiles)
+    return results
+
+def run_consel(inputfile, type, sort=9, basename="RAxML_perSiteLLs"):
+    makermtcmd = "makermt --%s %s" % (type, inputfile)
+    conselcmd = "consel %s" % basename
+    catpvcmd = "catpv %s > %s-pv.txt" % (basename, basename)
+    if sort:
+        catpvcmd += " -s %s" % sort
+    executeCMD(makermtcmd)
+    executeCMD(conselcmd)
+    executeCMD(catpvcmd)
+    conselOut = basename + "-pv.txt"
+    return parseConselOutfile(conselOut, sort)
+
+def parseConselOutfile(file, sort):
+    title = []
+    content = []
+    first = True
+    with open(file, 'r') as CONSELOUT:
+        for line in CONSELOUT:
+            if(line.startswith('#')):
+                if first and 'reading' not in line and ("%s+" % sort not in line):
+                    title.extend(
+                        line.replace('#', '').replace('|', '').strip().split())
+                    first = False
+                elif not first:
+                    values = line.replace('#', '').replace(
+                        '|', '').strip().split()
+                    content.append([float(x) for x in values])
+    return dict(zip(title, zip(*content)))
+
+
+def consel(cmd, title, basedir=os.getcwd()):
+    cmd = cmd+ "-n %s -w %s" % (title, os.path.abspath(basedir))
+    # run raxml
+    executeCMD(cmd)
+    infofiles = glob.glob("%s/RAxML*.%s" % (basedir,title))
+    cons_input = glob.glob("%s/RAxML_perSiteLLs.%s" % (basedir,title))[0]
+    # run consel
+    consel_output = run_consel(consel_input, 'puzzle', '.trees', sort)
+    infofiles.extend(glob.glob("%s/RAxML_perSiteLLs*" % (basedir)))
+    get_rid_of(infofiles)
+    return consel_output
+
 
 def executeCMD(cmd, dispout=False):
-    
     p = subprocess.Popen(
         cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
     out, err = p.communicate()
@@ -37,6 +87,7 @@ def executeCMD(cmd, dispout=False):
     if dispout:
         print("\nSTDOUT\n---------\n", out)
     return err
+
 
 def extractRAXMLikelihood(filename, n):
     likelihoods = []
@@ -48,9 +99,29 @@ def extractRAXMLikelihood(filename, n):
                 n -= 1
             if(n <= 0):
                 break
-
     return list(reversed(likelihoods))
 
+
+def extractSHTest(filename):
+    bestLK, treeLK = 0, 0
+    alpha5, alpha2, alpha1 = False, False, False
+    
+    with open(filename) as IN:
+        patern = re.compile('Model optimization, best Tree:')
+        prevpatern = re.compile('Likelihood:')
+        previous_line = ""
+        for i, line in enumerate(reversed(IN.readlines())):
+            if (patern.match(line)):
+                bestLK = float(line.split(':')[-1].strip())
+                if not prevpatern.search(previous_line):
+                    raise IndexError("Cannot parse raxml info file")
+                lline = previous_line.split(":")
+                treeLK = float(lline[2].rstrip("D(LH)").strip())
+                alpha5, alpha2, alpha1 = [not x.strip().upper().startswith("YES") for x in lline[5].split(",")]
+                break
+            previous_line = line
+    return bestLK, treeLK, alpha5, alpha2, alpha1                        
+    
 
 class LklModel():
     """computes statitic using raxml command line"""
@@ -67,12 +138,20 @@ class LklModel():
         self.currLH = 0
         get_rid_of(glob.glob("%s/RAxML*.%s" % (os.getcwd(),title)))
 
+    def _build_cmd_line(self, treefile):
+        cmdline = "%s -f g -z %s -s %s -m %s %s"%(self.cmd, treefile, self.alignment, self.model, self.extra)
+        return cmdline
+
+    def _build_treecomp_line(self, besttree, othertree):
+        cmdline = "%s -f h -t %s -z %s -s %s -m %s %s"%(self.cmd, besttree, othertree, self.alignment, self.model, self.extra)
+        return cmdline
+
     def optimize_model(self, gtree, **args):
         """Optimizes the RAxML model"""
         fd, treefile = tempfile.mkstemp('.tree')
         os.close(fd)
         gtree.write(outfile=treefile)
-        cmdline = "%s -f g -z %s -s %s -m %s %s"%(self.cmd, treefile, self.alignment, self.model, self.extra)
+        cmdline = self._build_cmd_line(treefile)
         self.currLH = calculate_likelihood(cmdline, self.title, basedir=os.getcwd())
         os.remove(treefile)
         return self.currLH
@@ -80,8 +159,37 @@ class LklModel():
     def print_raxml_tree(self, *args, **kargs):
         """Draw raxml tr -- adef and tr must have been previously defined"""
         print(self.curr_LH)
-          
-
+    
+    def compute_consel_test(self, *args):
+        """Compute consel output for a bunch of trees in argument"""
+        # start by building a file with th two trees
+        fd, treefile = tempfile.mkstemp('.trees')
+        os.close(fd)
+        trees = []
+        for t in args:
+            trees.append(t.write())
+        with open(treefile, 'w') as IN:
+            IN.write("\n".join(trees))
+        cmdline = self._build_cmd_line(treefile)
+        consel_output = consel(cmdline, "consel")
+        os.remove(treefile)
+        return consel_output
+    
+    def compute_lik_test(self, besttree, tree, test="SH", alpha=0.05):
+        """Compute sh test between two trees"""
+        fd, besttreefile = tempfile.mkstemp('.btree')
+        os.close(fd)
+        fd, curtreefile = tempfile.mkstemp('.tree')
+        os.close(fd)
+        besttree.write(besttreefile)
+        tree.write(curtreefile)
+        cmdline  =  self._build_treecomp_line(besttreefile, curtreefile)
+        bestlk, treelk, p5, p2, p1 = compute_sh_test(cmdline, self.title, basedir=os.getcwd())
+        os.remove(curtreefile)
+        os.remove(besttreefile)
+        p = {0.05:p5, 0.02:p2, 0.01:p1}
+        return bestlk, treelk, p.get(alpha, False)            
+      
 
 class RAxMLModel():
     """Computes test statistics using RAxML site-wise likelihoods"""
@@ -115,16 +223,18 @@ class RAxMLModel():
         os.remove(treefile)
         return self._raxml.best_LH
 
-    def compute_lik_test(self, gtree, stat="SH", alternative=None):
+    def compute_lik_test(self, besttree, tree, test="SH", alpha=0.05):
         """Computes the test statistic 'stat' using RAxML likelihoods"""
-        return self._raxml.compute_lik_test(gtree, stat, alternative)
+        bestlk = self.optimize_model(besttree)
+        pval, dnl = self._raxml.compute_lik_test(tree, test)
+        return bestlk, None, pval>alpha 
 
 
     def print_raxml_tree(self, *args, **kargs):
         """Draw raxml tr -- adef and tr must have been previously defined"""
-        treestr = raxml.tree_to_string(self._raxml.tr, self._raxml.adef)
+        #treestr = raxml.tree_to_string(self._raxml.tr, self._raxml.adef)
         #tree = TreeClass(treestr)
-        print(tree)
+        #print(tree)
         #print(treestr)
         print(self._raxml.best_LH)
           

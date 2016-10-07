@@ -308,3 +308,8 @@ class GPolySolver(GenomeBase):
         newcopy = GPolySolver(None, None)
         self.copy(newcopy)
         return newcopy
+    
+    def __eq__(self, other):
+        """Comparison of GenomeBase instance"""
+        rf = self.tree.robinson_foulds(other.tree)
+        return rf[0] == 0

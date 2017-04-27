@@ -398,7 +398,9 @@ if __name__ == '__main__':
     parser.add_argument('--timelim', nargs='?', type=float, const=120, help="Set time limit in minutes")
     parser.add_argument('--maxrcost', dest='maxrcost', type=float, help="Filtering input based on cost, if output is profileNJ like")
     parser.add_argument('--parallel', dest='parallel', nargs='?', const=4, type=int, default=0, help="Set parallel mode for tree evaluation and mutation/crossover")
-   
+    parser.add_argument('--ignoreleaf', action="store_true", help="Ignore label in input tree (Transform profileNJ to polytomysolver)")
+    parser.add_argument('--plot_lkl', action='store_true', help="Plot best ind likelihood for each generation")
+
     galgo = parser.add_argument_group('Genetic algo', 'Use genetic algorithm to find the best permutation')
     galgo.add_argument('--gen', type=int, default=10, dest='ngen', help="Number of generations for the G.A.")
     galgo.add_argument('--popsize', type=int, default=0, dest='popsize', help="Genetic population size, will fill or remove initial pop till this is met.")
@@ -414,7 +416,6 @@ if __name__ == '__main__':
     galgo.add_argument('--alpha', default=0.95, type=float01, help="Threshold for WC and FC stopping criterion (0.95) and alpha for SH criterion (0.05), Should be a float in ]0,1[. Please avid FC and WC for small pop size")
     galgo.add_argument('--sloop', default=100, type=int, help="Number of iteration for WC and FC stopping criterion")
     galgo.add_argument('--deltalkl', default=1, type=float, help="Maximum difference of score for CONV stopping criterion")
-    galgo.add_argument('--plot_lkl', action='store_true', help="Plot best ind likelihood for each generation")
 
     transfer =  galgo.add_argument_group('Enable transfer', 'Enable transfer in thee genetic algorithm, This require a dual fitness function for both the likelihood and cost and a species tree')
     transfer.add_argument('--sptree', '-s', help="HGT rate in a genome")
@@ -425,10 +426,8 @@ if __name__ == '__main__':
 
     permalgo = parser.add_argument_group('All permutation', 'Test all possibility for all input trees')
     permalgo.add_argument('--allsearch', nargs='?', type=notzero, const=1, help="Perform all permutation on all input and return best trees. You can specifiy the number of trees you want. If you set it to a negative value, all trees will be returned")
-    permalgo.add_argument('--ignoreleaf', action="store_true", help="Ignore label in input tree (Transform profileNJ to polytomysolver)")
 
         
-
     args = parser.parse_args()
     fmt = args.fmt if args.fmt != 'phylip' else "phylip-relaxed" 
     aln = AlignIO.read(args.align, format=fmt)

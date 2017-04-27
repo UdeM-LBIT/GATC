@@ -9,9 +9,11 @@ __author__ = "Emmanuel Noutahi"
 from ete3 import TreeNode
 from ete3.phylo import EvolEvent
 import types
-from collections import defaultdict as ddict
+from collections import defaultdict as ddict, Counter
 from itertools import izip
 import copy
+import six
+from six.moves import (map, range, zip)
 
 try:
     import cPickle as pickle
@@ -34,51 +36,6 @@ class TreeClass(TreeNode):
         """	Default init for the TreeClass. This works better than wrapping the entire class"""
         TreeNode.__init__(
             self, newick=newick, format=format, dist=dist, support=support, name=name)
-
-    
-    def write(self, features=None, outfile=None, format=0, is_leaf_fn=None,
-              format_root_node=False, dist_formatter=None, support_formatter=None,
-              name_formatter=None):
-        """
-        Returns the newick representation of current node. Several
-        arguments control the way in which extra data is shown for
-        every node:
-        :argument features: a list of feature names to be exported
-          using the Extended Newick Format (i.e. features=["name",
-          "dist"]). Use an empty list to export all available features
-          in each node (features=[])
-        :argument outfile: writes the output to a given file or stream
-           if outfile is a stream, you should close it after
-        :argument format: defines the newick standard used to encode the
-          tree. See tutorial for details.
-        :argument False format_root_node: If True, it allows features
-          and branch information from root node to be exported as a
-          part of the newick text string. For newick compatibility
-          reasons, this is False by default.
-        :argument is_leaf_fn: See :func:`TreeNode.traverse` for
-          documentation.
-        **Example:**
-        ::
-             t.get_newick(features=["species","name"], format=1)
-        """
-
-        nw = TreeNode.write(self,features=features,
-                          format=format,
-                          is_leaf_fn=is_leaf_fn,
-                          format_root_node=format_root_node,
-                          dist_formatter=dist_formatter,
-                          support_formatter=support_formatter,
-                          name_formatter=name_formatter)
-
-        if outfile is None:
-            return nw
-        else:
-            if isinstance(outfile, basestring):
-                with open(outfile, "w") as OUT:
-                    OUT.write(nw)
-            else:
-                outfile.write(nw)
-
 
     def __repr__(self):
         return "Tree Class '%s' (%s)" % (self.name, hex(self.__hash__()))
@@ -123,7 +80,7 @@ class TreeClass(TreeNode):
                 - "simplecopy" : Simple recursive tree topology and feature copy
 
         """
-        #nw_features = ["name", "species"]
+        # nw_features = ["name", "species"]
         if method == "newick":
             new_node = self.__class__(
                 self.write(features=["name"], format_root_node=True))
@@ -193,12 +150,11 @@ class TreeClass(TreeNode):
         """ Return True if there exist an edge between 2 node"""
         return (self.up == node or node.up == self)
 
-
     def insert_node_between(self, node, new_node):
         """ insert a new node between self and node"""
         if not self.edge_exist(node):
             return None
-        else :
+        else:
             if(self.up != node):
                 self, node = node, self
             self.detach()
@@ -215,7 +171,6 @@ class TreeClass(TreeNode):
         self.name = new_node.name
         for f in new_node.features:
             self.add_feature(f, getattr(new_node, f))
-  
 
     def _correct_copy(self, copy):
         """Correct the structure of new node copied using newick method"""
@@ -239,11 +194,10 @@ class TreeClass(TreeNode):
         return True if len(list(filter(lambda x: x in ancestors, ancestor))) == len(ancestor) else False
 
     def has_descendant(self, descendant):
-        """Check if the nodes is `descendant` are a descendant of the current Node"""
+        """Check if the nodes `descendant` are a descendant of the current Node"""
         descendant = self.get_tree_root().translate_nodes(descendant)
         descendants = self.get_descendants()
         return True if len(list(filter(lambda x: x in descendants, descendant))) == len(descendant) else False
-             
 
     def _euler_visit(self, node_visited=[]):
         """Perform a euler tour and return visited nodes"""
@@ -251,7 +205,7 @@ class TreeClass(TreeNode):
             node_visited.append(self)
             self.add_features(euler_visit=True)
             for child in self.get_children():
-                if( not child.has_feature('euler_visit')):
+                if(not child.has_feature('euler_visit')):
                     node_visited = child._euler_visit(node_visited)
         if (self.up):
             node_visited.append(self.up)
@@ -265,7 +219,7 @@ class TreeClass(TreeNode):
 
         try:
             target_nodes = [
-                n if isinstance(n, self.__class__) else self&n for n in target_nodes]
+                n if isinstance(n, self.__class__) else self & n for n in target_nodes]
             return target_nodes
 
         except (ValueError, IndexError) as e:
@@ -341,7 +295,6 @@ class TreeClass(TreeNode):
                     leaf.add_features(
                         species=leaf._extract_feature_name(separator=sep, order=pos, cap=capitalize))
 
-
     def set_genes(self, genesMap=None, sep="_", capitalize=False, pos="postfix", use_fn=None, **kwargs):
         """Set gene feature for each leaf in the tree.
 
@@ -390,7 +343,7 @@ class TreeClass(TreeNode):
 
     def contract_tree(self, seuil=0, feature='support', break_tree_topo=False):
         """ Contract
-         tree based on the dist between node, using a threshold. `contract_tree` 
+         tree based on the dist between node, using a threshold. `contract_tree`
         proceed bottom-up. Any branches with a support less than "seuil" will be removed
         if `break_tree_topo` is set to True, all the branch under this node will be recursively removed
         """
@@ -454,6 +407,13 @@ class TreeClass(TreeNode):
         """
         return len(self.children) > 2
 
+    def tree_is_polytomy(self):
+        """
+        Return True if the all tree is a polytomy.
+        """
+        root = self.get_tree_root()
+        return len(root) == len(root.get_children())
+
     def is_binary(self):
         """
         Return True if current node is a binary node.
@@ -506,15 +466,15 @@ class TreeClass(TreeNode):
         # self.label_internal_node()
         for node in self.iter_descendants():
             c_tree = self.copy("simplecopy", nw_format_root_node=True)
-            #c_node =c_tree&node.name
+            # c_node =c_tree&node.name
             c_node = c_tree.get_common_ancestor(
                 node.get_leaf_name()) if node.is_internal() else c_tree & node.name
             c_tree.set_outgroup(c_node)
             # case where we root at the node and not at the branch
             if(root_node and not node.is_leaf()):
                 root = c_tree.get_tree_root()
-                #new_child= [child for child in root.get_children() if child !=node.name][0]
-                #rooting_node = [child for child in root.get_children() if child.name ==node.name][0]
+                # new_child= [child for child in root.get_children() if child !=node.name][0]
+                # rooting_node = [child for child in root.get_children() if child.name ==node.name][0]
                 new_child = [child for child in root.get_children() if set(
                     child.get_leaf_name()).symmetric_difference(set(node.get_leaf_name()))][0]
                 rooting_node = [
@@ -523,10 +483,7 @@ class TreeClass(TreeNode):
                 new_child.detach()
                 # new_child.label_internal_node()
                 c_tree.add_child(new_child)
-                yield c_tree
-
-            elif not root_node:
-                yield c_tree
+            yield c_tree
 
     def iter_edges(self):
         """ Iter all over the edges in this tree"""
@@ -541,29 +498,31 @@ class TreeClass(TreeNode):
 
     def edge_reroot(self, unroot=False):
         """ Reroot a tree around each of its edge"""
-        i= 0
+        i = 0
         for edge in self.iter_edges():
-            parent , child = edge
+            parent, child = edge
             c_tree = self.copy("simplecopy", nw_format_root_node=True)
             if(unroot):
                 c_tree.unroot()
-            c_child = c_tree.get_common_ancestor(child.get_leaf_name()) if child.is_internal() else c_tree&child.name
-           
+            c_child = c_tree.get_common_ancestor(
+                child.get_leaf_name()) if child.is_internal() else c_tree & child.name
+
             c_parent = c_child.up
-            new_root =  TreeClass()
-            i +=1
+            new_root = TreeClass()
+            i += 1
             if c_parent and (unroot or c_parent is not c_tree):
                 c_child = c_child.detach()
-                path_to_root = [c_parent] if (unroot and c_parent is c_tree) else c_tree.get_path_to_ancestor(c_parent, c_tree)
-                sisters = [c_tree] if unroot else path_to_root[-2].get_sisters() 
-                
-                if(len(path_to_root)>1):
+                path_to_root = [c_parent] if (
+                    unroot and c_parent is c_tree) else c_tree.get_path_to_ancestor(c_parent, c_tree)
+                sisters = [
+                    c_tree] if unroot else path_to_root[-2].get_sisters()
+
+                if(len(path_to_root) > 1):
                     last_node = path_to_root[-1]
                     removed_children = []
                     for n in reversed(path_to_root[:-1]):
                         last_node = last_node.remove_child(n)
                         removed_children.append(last_node)
-                    
 
                     cur_node = removed_children.pop(-1)
                     for node in reversed(removed_children):
@@ -575,10 +534,10 @@ class TreeClass(TreeNode):
 
                 new_root.add_child(c_child)
                 new_root.add_child(c_parent)
-                #additional security to avoid single internal node
+                # additional security to avoid single internal node
                 new_root.delete_single_child_internal()
                 yield new_root
-            
+
     def get_events(self, include_lost=True):
         """Returns a list of **all** duplication and speciation
         events detected after this node.
@@ -614,7 +573,7 @@ class TreeClass(TreeNode):
         return all_events
 
     def _find_closest_descendant_having_feature(self, name, value, descendant=[]):
-        """Find the first closest descendant in right and left child 
+        """Find the first closest descendant in right and left child
         having a particular feature """
 
         for node in self.get_children():
@@ -662,6 +621,23 @@ class TreeClass(TreeNode):
         """Return whether or not this tree has polytomies
         """
         return len(self.get_polytomies()) > 0
+
+
+    def is_incomparable(self, other, exclude_sis=False):
+        root = self.get_tree_root()
+        path_to_anc1 = self.get_path_to_ancestor(self, root)
+        path_to_anc2 = self.get_path_to_ancestor(other, root)
+        return (self in path_to_anc2 or other in path_to_anc1) and (self.up != other.up or not nosis)
+
+
+    def get_incomparable_list(self, exclude_sis=False):
+        root = self.get_tree_root()
+        comp_list = self.get_path_to_ancestor(self, root)
+        comp_list += self.get_descendants()
+        if exclude_sis:
+            comp_list += self.get_sisters()
+        return set(root.get_descendants()) - set(comp_list)
+
 
     def get_children_species(self):
         """ Return the species list of the children under this particular node
@@ -767,7 +743,7 @@ class TreeClass(TreeNode):
         return cost
 
     def compute_dup_cons(self):
-        """Compute duplication consitency score at the node, 
+        """Compute duplication consitency score at the node,
         this function will raise an error if the node is a polytomy or a speciation node
         """
         assert(not self.is_leaf() and self.is_binary() and (
@@ -845,12 +821,12 @@ class TreeClass(TreeNode):
     def replace_child(self, old_child, new_child):
         """ Replace a child by another node in a tree"""
         if (self is None) or (old_child not in self.get_children()):
-            raise ValueError("Node is None or old_child is not a child of current node")
+            raise ValueError(
+                "Node is None or old_child is not a child of current node")
         else:
             self.remove_child(old_child)
             self.add_child(new_child)
             return self
-
 
     def write_seq_to_fasta(self, out='seq.fasta', comment=1):
         """Save sequence in tree into a fasta file"""
@@ -867,6 +843,57 @@ class TreeClass(TreeNode):
                         id = id + "\n"
                         outfile.write(id)
                         outfile.write(seq)
+
+    
+    def has_same_topo(self, t2, attr_t1="name", attr_t2="name",
+                        unrooted_trees=False):
+  
+        t1 = self
+        if not unrooted_trees and (len(t1.children) > 2 or len(t2.children) > 2):
+            raise TreeError("Unrooted tree found! You may want to activate the unrooted_trees flag.")
+
+        attrs_t1 = set([getattr(n, attr_t1) for n in t1.iter_leaves() if hasattr(n, attr_t1)])
+        attrs_t2 = set([getattr(n, attr_t2) for n in t2.iter_leaves() if hasattr(n, attr_t2)])
+        common_attrs = attrs_t1 & attrs_t2
+        # release mem
+        attrs_t1, attrs_t2 = None, None
+
+        min_comparison = None
+        t1_content = t1.get_cached_content()
+        t2_content = t2.get_cached_content()
+        t1_leaves = t1_content[t1]
+        t2_leaves = t2_content[t2]
+
+        if unrooted_trees:
+            edges1 = Counter([
+                    tuple(sorted([tuple(sorted([getattr(n, attr_t1) for n in content if hasattr(n, attr_t1)])),
+                                  tuple(sorted([getattr(n, attr_t1) for n in t1_leaves-content if hasattr(n, attr_t1) ]))]))
+                    for content in six.itervalues(t1_content)])
+
+            edges2 = Counter([
+                    tuple(sorted([
+                                tuple(sorted([getattr(n, attr_t2) for n in content if hasattr(n, attr_t2)])),
+                                tuple(sorted([getattr(n, attr_t2) for n in t2_leaves-content if hasattr(n, attr_t2)]))]))
+                    for content in six.itervalues(t2_content)])
+            
+            del edges1[((),())]
+            del edges2[((),())]
+
+        else:
+            edges1 = Counter([
+                    tuple(sorted([getattr(n, attr_t1) for n in content if hasattr(n, attr_t1)]))
+                    for content in six.itervalues(t1_content)])
+            edges2 = Counter([
+                    tuple(sorted([getattr(n, attr_t2) for n in content if hasattr(n, attr_t2) ]))
+                    for content in six.itervalues(t2_content)])
+            del edges1[()]
+            del edges2[()]
+
+        #print edges1
+        #print edges2
+        # find symetric difference
+        rf = sum(((edges1-edges2) + (edges2-edges1)).values())
+        return rf==0
 
     @staticmethod
     def _capitalize(line):

@@ -18,17 +18,17 @@ def get_rid_of(listfile):
         os.remove(f)
     
 
-def calculate_likelihood(cmd, title, basedir=os.getcwd()):
-    cmd = cmd+ "-n %s -w %s" % (title, os.path.abspath(basedir))
+def calculate_likelihood(cmd, title, ext="", basedir=os.path.abspath(os.getcwd()), size=1):
+    cmd = cmd+ "-n %s -w %s" % (title+ext, basedir)
     rst = executeCMD(cmd)
-    infofiles = glob.glob("%s/RAxML*.%s" % (basedir,title))
+    infofiles = glob.glob("%s/RAxML*.%s" % (basedir,title+ext))
     f = [x for x in infofiles if 'info' in x][0]
-    likelihoods = extractRAXMLikelihood(f, 1)[0]
+    likelihoods = extractRAXMLikelihood(f, size)
     get_rid_of(infofiles)
     return likelihoods
 
-def compute_sh_test(cmd, title, basedir=os.getcwd()):
-    cmd = cmd+ "-n %s -w %s" % (title, os.path.abspath(basedir))
+def compute_sh_test(cmd, title, basedir=os.path.abspath(os.getcwd())):
+    cmd = cmd+ "-n %s -w %s" % (title, basedir)
     rst = executeCMD(cmd)
     infofiles = glob.glob("%s/RAxML*.%s" % (basedir,title))
     f = [x for x in infofiles if 'info' in x][0]
@@ -67,7 +67,7 @@ def parseConselOutfile(file, sort):
 
 
 def consel(cmd, title, basedir=os.getcwd()):
-    cmd = cmd+ "-n %s -w %s" % (title, os.path.abspath(basedir))
+    cmd = cmd+ "-n %s -w %s" % (title, basedir)
     # run raxml
     executeCMD(cmd)
     infofiles = glob.glob("%s/RAxML*.%s" % (basedir,title))
@@ -85,12 +85,16 @@ def executeCMD(cmd, dispout=False):
     out, err = p.communicate()
     #print "STDERR\n---------\n", err
     if dispout:
-        print("\nSTDOUT\n---------\n", out)
+        #print("\nSTDOUT\n---------\n", out)
+        print("\nSTDERR\n---------\n")
+        print(err)
+        print(out)
     return err
 
 
 def extractRAXMLikelihood(filename, n):
     likelihoods = []
+
     with open(filename) as IN:
         patern = re.compile('Tree [0-9]+: ')
         for line in reversed(IN.readlines()):
@@ -125,21 +129,29 @@ def extractSHTest(filename):
 
 class LklModel():
     """computes statitic using raxml command line"""
-    def __init__(self, alignment, cmd="raxmlHPC-SSE3", model="GTRGAMMA", eps=2.0, title="test", extra_string=""):
+    def __init__(self, alignment, cmd="raxmlHPC-SSE3", model="GTRGAMMA", eps=2.0, title="test", extra_string="", reestimate=False):
         self.alignment = alignment
         self.cmd = cmd
         fd, self.alignment = tempfile.mkstemp('.align')
         os.close(fd)
         AlignIO.write(alignment, self.alignment, format="phylip-relaxed")
         self.model = model
+        self.reestimate = reestimate
         self.eps = eps
         self.title  = title
         self.extra = extra_string 
         self.currLH = 0
-        get_rid_of(glob.glob("%s/RAxML*.%s" % (os.getcwd(),title)))
+        self.wdir = os.path.join(os.path.abspath(os.getcwd()), '_raxmltmp')
+        if not os.path.exists(self.wdir):
+            os.makedirs(self.wdir)
+
+        get_rid_of(glob.glob("%s/RAxML*.%s" % (self.wdir,title)))
 
     def _build_cmd_line(self, treefile):
-        cmdline = "%s -f g -z %s -s %s -m %s %s"%(self.cmd, treefile, self.alignment, self.model, self.extra)
+        bcmd = "-f g"
+        if self.reestimate:
+            bcmd = "-f G"
+        cmdline = "%s %s -z %s -s %s -m %s %s"%(self.cmd, bcmd, treefile, self.alignment, self.model, self.extra)
         return cmdline
 
     def _build_treecomp_line(self, besttree, othertree):
@@ -150,9 +162,17 @@ class LklModel():
         """Optimizes the RAxML model"""
         fd, treefile = tempfile.mkstemp('.tree')
         os.close(fd)
-        gtree.write(outfile=treefile)
+        size = 1
+        if isinstance(gtree, list):
+            size = len(gtree)
+            with open(treefile, 'w') as GOUT:
+                for gt in gtree:
+                    GOUT.write(gt.write()+"\n")
+        else:
+            gtree.write(outfile=treefile)
         cmdline = self._build_cmd_line(treefile)
-        self.currLH = calculate_likelihood(cmdline, self.title, basedir=os.getcwd())
+        self.currLH = calculate_likelihood(cmdline, self.title, ext=args.get("ext", ""), basedir=self.wdir, size=size)
+        #print treefile
         os.remove(treefile)
         return self.currLH
 
@@ -184,11 +204,15 @@ class LklModel():
         besttree.write(besttreefile)
         tree.write(curtreefile)
         cmdline  =  self._build_treecomp_line(besttreefile, curtreefile)
-        bestlk, treelk, p5, p2, p1 = compute_sh_test(cmdline, self.title, basedir=os.getcwd())
+        bestlk, treelk, p5, p2, p1 = compute_sh_test(cmdline, self.title, basedir=self.wdir)
         os.remove(curtreefile)
         os.remove(besttreefile)
         p = {0.05:p5, 0.02:p2, 0.01:p1}
-        return bestlk, treelk, p.get(alpha, False)            
+        return bestlk, treelk, p.get(alpha, False)    
+
+    def __eq__(self, other):
+        return (self.alignment == other.alignment) and (self.model == other.model) and (self.cmd == other.cmd)
+        
       
 
 class RAxMLModel():
@@ -199,6 +223,7 @@ class RAxMLModel():
         self._raxml = RAxML()
         self.model = model
         self.alignment = alignment
+        self.reestimate = True
         fd, self.alignment = tempfile.mkstemp('.align')
         os.close(fd)
         AlignIO.write(alignment, self.alignment, format="phylip-relaxed")
@@ -213,13 +238,13 @@ class RAxMLModel():
         os.remove(self.alignment)
 
 
-    def optimize_model(self, gtree):
+    def optimize_model(self, gtree, **args):
         """Optimizes the RAxML model"""
         fd, treefile = tempfile.mkstemp('.tree')
         os.close(fd)
         gtree.write(outfile=treefile)
         self._raxml.optimize_model(treefile, self.alignment,
-                                   "-m %s -e %s -n %s %s" % (self.model, self.eps, self.title, self.extra))
+                                   "-m %s -e %s -n %s %s" % (self.model, self.eps, self.title+args.get("ext", ""), self.extra))
         os.remove(treefile)
         return self._raxml.best_LH
 
@@ -237,7 +262,11 @@ class RAxMLModel():
         #print(tree)
         #print(treestr)
         print(self._raxml.best_LH)
-          
+    
+
+    def __eq__(self, other):
+        return self.alignment == other.alignment and self.model == other.model
+
 
 class RAxML:
     """Wrapper for RAxML functions"""

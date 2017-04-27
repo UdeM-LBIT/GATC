@@ -1,7 +1,8 @@
 # This file is part of profileNJ
 #
 # Date: 02/2014
-# TreeUtils is a python class that offer function related to phylogeny tree, using TreeClass
+# TreeUtils is a python class that offer function related to phylogeny
+# tree, using TreeClass
 
 __author__ = "Emmanuel Noutahi"
 
@@ -16,13 +17,105 @@ import urllib2
 import numpy as np
 from TreeClass import TreeClass
 from collections import defaultdict as ddict
-from ete3 import Phyloxml
+from ete3 import Phyloxml, Tree
 from ete3 import orthoxml
 from ete3.parser.newick import NewickError
+import itertools
 
 
 # TreeUtils:
 
+class MatrixRep():
+    def __init__(self, genetree, speciestree, defval=0):
+        self.gtree = genetree
+        self.stree = speciestree
+        # keeping tree as key (in case the name was not set for internal nodes)
+        self.gmap = dict((gn, i) for i, gn in enumerate(genetree.traverse("postorder")))
+        self.smap = dict((sn, i) for i, sn in enumerate(speciestree.traverse("postorder")))
+        self.matrix = np.empty((len(self.gmap), len(self.smap)))
+        self.matrix.fill(defval)
+        self.shape = self.matrix.shape
+        self.inlist = self.smap.keys() + self.gmap.keys()
+    
+    def __len__(self):
+        """Return the len of the longuest axis"""
+        return max(self.shape)
+    
+    def __contains__(self, item):
+        return item in self.inlist
+    
+    def __iter__(self):
+        for (g,i_g) in self.gmap.items():
+            for (s,i_s) in self.smap.items():
+                yield (g,s, self.matrix[i_g, i_s])
+    
+    def _reformat_slice(self, slice, map):
+        return id if isinstance(id, int) else map.get(id, None)
+
+    def _get_new_index(self, index, map):
+        start =  index.start
+        stop =  index.stop
+        step = index.step
+        start = self._reformat_slice(start, map)
+        stop = self._reformat_slice(stop, map)
+        step = step if isinstance(step, int) else None
+        return slice(start, stop, step)
+        
+    def __getitem__(self, index):
+        """Indexing with int, string or slice"""
+        # the following will return a whole row
+        if isinstance(index, Tree):
+            return self.matrix[self.gmap[index]]
+        elif isinstance(index, int):
+            return self.matrix[index]
+        # in th folowing, we are returning a slice
+        elif isinstance(index, slice):
+            index = self._get_new_index(index, self.gmap)
+            return self.matrix[index] 
+        # we are accepting two slices here, no more
+        elif len(index) != 2:
+            raise TypeError("Invalid index type.")
+        # Handle double indexing
+        row_index, col_index = index
+        if isinstance(row_index, Tree):
+            row_index = self.gmap.get(row_index, None)
+        if isinstance(col_index, Tree):
+            col_index = self.smap.get(col_index, None)        
+        elif isinstance(row_index, slice):
+            row_index =  self._get_new_index(row_index, self.gmap)
+        elif isinstance(col_index, slice):
+            col_index =  self._get_new_index(col_index, self.smap)
+        # let numpy manage the exceptions
+        return self.matrix[row_index, col_index]
+    
+    def __setitem__(self, index, val):
+        """Indexing with int, string or slice"""
+        # the following will return a whole row
+        if isinstance(index, Tree):
+            self.matrix[self.gmap[index]]  =  val
+        elif isinstance(index, int):
+            self.matrix[index] = val
+        # in th folowing, we are returning a slice
+        elif isinstance(index, slice):
+            index = self._get_new_index(index, self.gmap)
+            self.matrix[index] = val
+        # we are accepting two slices here, no more
+        elif len(index) != 2:
+            raise TypeError("Invalid index type.")
+        # Handle double indexing
+        row_index, col_index = index
+        if isinstance(row_index, Tree):
+            row_index = self.gmap.get(row_index, None)
+        if isinstance(col_index, Tree):
+            col_index = self.smap.get(col_index, None)        
+        elif isinstance(row_index, slice):
+            row_index =  self._get_new_index(row_index, self.gmap)
+        elif isinstance(col_index, slice):
+            col_index =  self._get_new_index(col_index, self.smap)
+        # let numpy manage the exceptions
+        self.matrix[row_index, col_index] = val
+
+    
 def fetch_ensembl_genetree_by_id(treeID=None, aligned=0, sequence="none", output="nh", nh_format="full"):
     """Fetch genetree from ensembl tree ID
     :argument treeID: the ensembl tree ID, this is mandatory
@@ -34,7 +127,7 @@ def fetch_ensembl_genetree_by_id(treeID=None, aligned=0, sequence="none", output
     if not treeID:
         raise valueError('Please provide a genetree id')
     else:
-        #http = httplib2.Http(".cache")
+        # http = httplib2.Http(".cache")
         server = "http://rest.ensembl.org"
         ext = "/genetree/id/%s?sequence=%s;aligned=%i" % (
             treeID, sequence, aligned)
@@ -45,9 +138,9 @@ def fetch_ensembl_genetree_by_id(treeID=None, aligned=0, sequence="none", output
             server + ext, headers={"Content-Type": output})
         resp = urllib2.urlopen(request)
         content = resp.read()
-        #resp, content = http.request(server+ext, method="GET", headers={"Content-Type":output})
+        # resp, content = http.request(server+ext, method="GET", headers={"Content-Type":output})
         if not resp.getcode() == 200:
-            print ("Invalid response: ", resp.getcode())
+            print("Invalid response: ", resp.getcode())
             raise ValueError('Failled to process request!')
 
         if(output.lower() != "text/x-phyloxml"):
@@ -90,7 +183,7 @@ def fetch_ensembl_genetree_by_member(memberID=None, species=None, id_type=None, 
 
 def lcaPreprocess(tree):
     """Make an euler tour of this tree"""
-    #root = tree.get_tree_root()
+    # root = tree.get_tree_root()
     tree.add_features(depth=0)
     tree.del_feature('euler_visit')
     for node in tree.iter_descendants("levelorder"):
@@ -98,20 +191,20 @@ def lcaPreprocess(tree):
         # can write this because parent are always visited before
         node.add_features(depth=node.up.depth + 1)
     node_visited = tree._euler_visit([])
-    #print tree.get_ascii(show_internal= True, attributes=['name', 'euler_visit', 'depth'])
+    # print tree.get_ascii(show_internal= True, attributes=['name', 'euler_visit', 'depth'])
     # number of element in array
     n = len(node_visited)
     m = int(np.ceil(np.log2(n)))
-    rmq_array =  np.zeros((n, m), dtype=int)
+    rmq_array = np.zeros((n, m), dtype=int)
     for i in xrange(n):
-        rmq_array[i,0] = i
+        rmq_array[i, 0] = i
     for j in xrange(1, m):
         i = 0
-        while(i + 2**j < n-1 ):
-            if(node_visited[rmq_array[i,j-1]].depth < node_visited[rmq_array[(i+2**(j-1)), j-1]].depth):
-                rmq_array[i,j] = rmq_array[i,j-1]
-            else :
-                rmq_array[i,j] = rmq_array[i+2**(j-1), j-1]                 
+        while(i + 2**j < n - 1):
+            if(node_visited[rmq_array[i, j - 1]].depth < node_visited[rmq_array[(i + 2**(j - 1)), j - 1]].depth):
+                rmq_array[i, j] = rmq_array[i, j - 1]
+            else:
+                rmq_array[i, j] = rmq_array[i + 2**(j - 1), j - 1]
             i += 1
 
     node_map = ddict()
@@ -121,7 +214,7 @@ def lcaPreprocess(tree):
         # bad practice
         try:
             node_map[cur_node] = min(node_map[cur_node], i)
-        except :
+        except:
             node_map[cur_node] = i
         name2ind[cur_node.name] = node_map[cur_node]
 
@@ -142,11 +235,11 @@ def getLca(sptree, species):
     # using the biggest interval should return the lca of all species
     if len(species) > 1:
         s_index = sorted([sptree.node2ind[spec] for spec in species])
-    #print "s_index vaut :", s_index , " et taille est : ", len(sptree.node2ind), " et rmq est : ", sptree.rmqmat.shape
-    #print sptree.ind2node
+    # print "s_index vaut :", s_index , " et taille est : ", len(sptree.node2ind), " et rmq est : ", sptree.rmqmat.shape
+    # print sptree.ind2node
         i = s_index[0]
         j = s_index[-1]
-    
+
     else:
         if isinstance(species[0], str):
             # in this case, we have a leaf
@@ -155,12 +248,11 @@ def getLca(sptree, species):
             # this is an instance of TreeClass
             i = sptree.node2ind[species[0]]
         j = i
-    k = int(np.log2(j-i+1))
-    if (A[M[i, k]].depth<= A[M[j-2**(k) +1, k]].depth):
-        return A[M[i,k]]
+    k = int(np.log2(j - i + 1))
+    if (A[M[i, k]].depth <= A[M[j - 2**(k) + 1, k]].depth):
+        return A[M[i, k]]
     else:
-        return A[M[j- 2**(k) +1, k]]
-
+        return A[M[j - 2**(k) + 1, k]]
 
 
 def lcaMapping(genetree, specietree, multspeciename=True):
@@ -170,13 +262,13 @@ def lcaMapping(genetree, specietree, multspeciename=True):
     :argument multspeciename: A flag to use in order to accept multi specie name at genetree internal node.
     """
 
-    smap = {} #a dict that map specie name to specie node in specietree
+    smap = {}  # a dict that map specie name to specie node in specietree
     mapping = {}
     if not specietree.has_feature('lcaprocess', True):
         lcaPreprocess(specietree)
 
     for node in genetree.traverse(strategy="postorder"):
-        
+
         if node.is_leaf():
             mapping[node] = getLca(specietree, [node.species])
         else:
@@ -217,7 +309,7 @@ def reconcile(genetree=None, lcaMap=None, lost=False, lost_label_fn=None):
                 if not (set(node.get_child_at(0).get_species()).intersection(set(node.get_child_at(1).get_species()))):
                     node.type = TreeClass.NAD
 
-        if (isinstance(lost, basestring) and lost.upper() == "YES") or lost==True:
+        if (isinstance(lost, basestring) and lost.upper() == "YES") or lost:
             for node in genetree.traverse("postorder"):
                 children_list = node.get_children()
                 node_is_dup = (
@@ -257,8 +349,9 @@ def reconcile(genetree=None, lcaMap=None, lost=False, lost_label_fn=None):
 
                             else:
                                 if lost_label_fn:
-                                    lostnode.name = lost_label_fn(lostnode.species)
-                                else :
+                                    lostnode.name = lost_label_fn(
+                                        lostnode.species)
+                                else:
                                     lostnode.name = "lost_" + lostnode.species
 
                             lostnode.add_features(type=TreeClass.LOST)
@@ -291,8 +384,8 @@ def reconcile(genetree=None, lcaMap=None, lost=False, lost_label_fn=None):
 
                         if(len(unadded_specie) > 1):
                             lostnode.name = "lost_" + \
-                                           str(lost_count) + "_" + \
-                                        "|".join([s[0:3] for s in unadded_specie])
+                                str(lost_count) + "_" + \
+                                "|".join([s[0:3] for s in unadded_specie])
 
                         else:
                             lostnode.name = "lost_" + lostnode.species
@@ -317,7 +410,7 @@ def computeDLScore(genetree, lcaMap=None, dupcost=None, losscost=None):
             if (lcaMap[node] in child_map):
                 node_is_dup = params.getdup(lcaMap[node])
                 dup_score += (dupcost if dupcost else node_is_dup)
-            
+
             for child in node.get_children():
                 if node_is_dup:
                     child_map = [lcaMap[node]]
@@ -325,16 +418,125 @@ def computeDLScore(genetree, lcaMap=None, dupcost=None, losscost=None):
                     child_map = lcaMap[node].get_children()
                 curr_node = lcaMap[child]
                 while(curr_node not in child_map):
-                    lost_nodes = set(curr_node.up.get_children()) - set([curr_node])
+                    lost_nodes = set(
+                        curr_node.up.get_children()) - set([curr_node])
                     if losscost:
-                        loss_score += len(lost_nodes)*losscost
+                        loss_score += len(lost_nodes) * losscost
                     else:
-                        loss_score += np.sum([params.getloss(l) for l in lost_nodes])
-                    curr_node = curr_node.up 
+                        loss_score += np.sum([params.getloss(l)
+                                              for l in lost_nodes])
+                    curr_node = curr_node.up
 
-    else :
+    else:
         raise Exception("LcaMapping not provided !!")
     return dup_score, loss_score
+
+
+def computeDTLScore(genetree, speciestree, Dc=1, Tc=1, Lc=1, flag=True):
+    if not speciestree.has_feature('lcaprocess', True):
+        speciestree.label_internal_node()
+        lcaPreprocess(speciestree)
+    leafMap = {}
+    for leaf in genetree:
+        if not leaf.has_feature('species'):
+            raise ValueError("You should set species before calling")
+        leafMap[leaf] = speciestree&leaf.species
+    
+    cost_table = MatrixRep(genetree, speciestree, np.inf)
+    spec_table = MatrixRep(genetree, speciestree, np.inf)
+    dup_table = MatrixRep(genetree, speciestree, np.inf)
+    trf_table = MatrixRep(genetree, speciestree, np.inf)
+    in_table = MatrixRep(genetree, speciestree, np.inf)
+    inAlt_table = MatrixRep(genetree, speciestree, np.inf)
+    out_table = MatrixRep(genetree, speciestree, np.inf)
+    
+    for gleaf in genetree:
+        glsmap = leafMap[gleaf]
+        cost_table[gleaf, glsmap] = 0
+        comp_spec = glsmap
+        while comp_spec is not None:
+            inAlt_table[gleaf, comp_spec] = 0
+            in_table[gleaf, comp_spec] = Lc*(-comp_spec.depth + glsmap.depth)
+            comp_spec =  comp_spec.up
+    for gnode in genetree.iter_internal_node(strategy="postorder", enable_root=True):
+        for snode in speciestree.traverse("postorder"):
+            gchild1, gchild2 = gnode.get_children()
+            if snode.is_leaf():
+                spec_table[gnode, snode] = np.inf
+                dup_table[gnode, snode] = Dc + cost_table[gchild1, snode] + cost_table[gchild2, snode]
+                # because we can't have transfer at root
+                if not snode.is_root():
+                    # one child is incomprable and the second
+                    # is a descendant    
+                    trf_table[gnode, snode] = Tc + min(in_table[gchild1, snode]+out_table[gchild2, snode], in_table[gchild2, snode] + out_table[gchild1, snode])
+                
+                cost_table[gnode, snode] = min(
+                    spec_table[gnode, snode], 
+                    dup_table[gnode,snode], 
+                    trf_table[gnode, snode]
+                    )
+                
+                in_table[gnode, snode] = cost_table[gnode, snode]
+                inAlt_table[gnode, snode] = cost_table[gnode, snode]
+
+            else:
+                schild1, schild2 = snode.get_children()
+                spec_table[gnode, snode] =  min(
+                    in_table[gchild1, schild1] + in_table[gchild2, schild2], 
+                    in_table[gchild1, schild2] + in_table[gchild2, schild1]
+                    )
+                dcost_g_s = 0
+                if flag :
+                    dcost_g_s = min(
+                        cost_table[gchild1, snode] + in_table[gchild2, schild1] + Lc, # loss in one child
+                        cost_table[gchild1, snode] + in_table[gchild2, schild2] + Lc,
+                        cost_table[gchild2, snode] + in_table[gchild1, schild1] + Lc,
+                        cost_table[gchild2, snode] + in_table[gchild1, schild2] + Lc,
+                        cost_table[gchild2, snode] + cost_table[gchild1, snode], #both map to snode
+                        in_table[gchild1, schild1] + in_table[gchild2, schild1] + 2*Lc, #both map to descendant of snode
+                        in_table[gchild1, schild1] + in_table[gchild2, schild2] + 2*Lc, #both map to descendant of snode
+                        in_table[gchild1, schild2] + in_table[gchild2, schild2] + 2*Lc, #both map to descendant of snode
+                        in_table[gchild1, schild2] + in_table[gchild2, schild1] + 2*Lc, #both map to descendant of snode
+
+                    )
+                    
+                else: 
+                    dcost_g_s = in_table[gchild1, snode] + in_table[gchild2, snode]
+                dup_table[gnode, snode] = Dc + dcost_g_s
+                if not snode.is_root():
+                    trf_table[gnode, snode] = Tc + min(
+                        in_table[gchild1, snode]+out_table[gchild2, snode], 
+                        in_table[gchild2, snode] + out_table[gchild1, snode]
+                        )
+
+                cost_table[gnode, snode] = min(
+                    spec_table[gnode, snode],
+                    dup_table[gnode, snode],
+                    trf_table[gnode, snode]
+                )
+                in_table[gnode, snode] = min(
+                    cost_table[gnode, snode],
+                    in_table[gnode, schild1] + Lc,
+                    in_table[gnode, schild2] + Lc
+                )
+                inAlt_table[gnode, snode] = min(
+                        cost_table[gnode, snode],
+                        inAlt_table[gnode, schild1],
+                        inAlt_table[gnode, schild2]
+                )
+
+        for snode in speciestree.iter_internal_node("preorder",True):
+            schild1, schild2 = snode.get_children()
+            out_table[gnode, schild1] = min(
+                out_table[gnode,snode],
+                inAlt_table[gnode, schild2]
+            )
+            out_table[gnode, schild2] = min(
+                out_table[gnode,snode],
+                inAlt_table[gnode, schild1]
+            )
+    #print cost_table.matrix
+    return np.min(cost_table[genetree])
 
 def computeDL(genetree, lcaMap=None):
     """
@@ -346,7 +548,7 @@ def computeDL(genetree, lcaMap=None):
     if not lcaMap and genetree.has_feature('lcaMap'):
         lcaMap = genetree.lcaMap
 
-    if lcaMap and not genetree.is_reconcilied():  
+    if lcaMap and not genetree.is_reconcilied():
         for node in genetree.traverse("levelorder"):
             if (lcaMap[node] in [lcaMap[child] for child in node.get_children()]):
                 dup += 1
@@ -355,15 +557,17 @@ def computeDL(genetree, lcaMap=None):
                 parent_is_dup = 0
                 if(lcaMap[parent] in [lcaMap[child] for child in parent.get_children()]):
                     parent_is_dup = 1
-                loss += (lcaMap[node].depth - lcaMap[parent].depth - 1 + parent_is_dup)
-    
-    else :
+                loss += (lcaMap[node].depth -
+                         lcaMap[parent].depth - 1 + parent_is_dup)
+
+    else:
         if(genetree is None or not genetree.is_reconcilied()):
-            raise Exception("LcaMapping not found and your Genetree didn't undergo reconciliation yet")
+            raise Exception(
+                "LcaMapping not found and your Genetree didn't undergo reconciliation yet")
 
         for node in genetree.traverse():
             if node.has_feature('type'):
-                if(node.type == TreeClass.NAD or node.type == TreeClass.AD ):
+                if(node.type == TreeClass.NAD or node.type == TreeClass.AD):
                     dup += 1
                 elif node.type == TreeClass.LOST:
                     loss += 1
@@ -380,6 +584,28 @@ def cleanFeatures(tree=None, features=[]):
                     node.del_feature(f)
                     cleaned = True
     return cleaned
+
+
+def __is_dist_elligible(tree):
+    """Check whether or not a tree has branch length on all its branch"""
+    return not (all([n.dist == 1.0 for n in tree.iter_descendants()]) and tree.dist == 0)
+
+
+def get_distance_from_tree(tree):
+    """Return a distance matrix from input tree
+    """
+    node_order = tree.get_leaf_names()
+    if not __is_dist_elligible(tree):
+        raise ValueError(
+            "Cannot infer distance matrix from tree branch length. All branch are set to default")
+    nl = len(node_order)  # number of leaf
+    distance_mat = np.zeros((nl, nl), dtype=float)
+    for i in range(nl):
+        for j in range(i + 1, nl):
+            distance_mat[i, j] = distance_mat[
+                j, i] = tree.get_distance(node_order[i], node_order[j])
+    np.fill_diagonal(distance_mat, 0)
+    return distance_mat, node_order
 
 
 def binaryRecScore(node, lcamap, dupcost=None, losscost=None):
@@ -427,7 +653,7 @@ def binaryRecScore(node, lcamap, dupcost=None, losscost=None):
                     child_lost += 1
                     c = c.up
 
-    return dup+lost, dup, lost
+    return dup + lost, dup, lost
 
 
 def totalDuplicationConsistency(tree):
@@ -465,9 +691,10 @@ def getTreeFromPhyloxml(xml, saveToFile="default.xml", delFile=True):
     return treeList
 
 
-def resetNodeName(tree, sep):
+def resetNodeName(tree, sep, spec_pos):
+    spec_pos *= -1
     for x in tree.traverse():
-        x.name = x.name.split(sep)[0]
+        x.name = x.name.split(sep)[spec_pos]
     return tree
 
 
@@ -491,7 +718,7 @@ def getSpecieCount(tree):
 def getReverseMap(lcamap, use_name=False):
     """Get reverse map from specie to gene"""
     reversedmap = ddict(list)
-    for (g,s) in lcamap.items():
+    for (g, s) in lcamap.items():
         if(use_name):
             reversedmap[s.name].append(g)
         else:
@@ -501,37 +728,42 @@ def getReverseMap(lcamap, use_name=False):
 
 def getImageTreeNode(genetree, specietree, lcamap):
     """ Get the specie image tree node of a genetree"""
-    
+
     # get pre(s) for each  node in specietree
     reversedmap = getReverseMap(lcamap)
     k = 0
     # Traverse G in df order and set ih to 0 for internal node
     for node in genetree.iter_internal_node("levelorder", enable_root=True):
         node.add_features(i_h=0)
-        node.name = 'n%d'%k
+        node.name = 'n%d' % k
 
-    # Arange the children of each node in G according to the position of their images 
+    # Arange the children of each node in G according to the position of their images
     # in post-order traversal of S
     for snode in specietree.traverse("postorder"):
         for gnode in reversedmap[snode]:
             p_gnode = gnode.up
             if(p_gnode):
-                gnode_ind = [x for x in xrange(len(p_gnode.children)) if p_gnode.children[x]==gnode][0]
-                p_gnode.children[gnode_ind], p_gnode.children[p_gnode.i_h] = p_gnode.children[p_gnode.i_h], p_gnode.children[gnode_ind]
+                gnode_ind = [x for x in xrange(len(p_gnode.children)) if p_gnode.children[
+                    x] == gnode][0]
+                p_gnode.children[gnode_ind], p_gnode.children[
+                    p_gnode.i_h] = p_gnode.children[p_gnode.i_h], p_gnode.children[gnode_ind]
                 p_gnode.i_h += 1
-    
-    # compute B(s) that contains all the gene tree nodes g / s in I(g) for s in S
+
+    # compute B(s) that contains all the gene tree nodes g / s in I(g) for s
+    # in S
     B_array = ddict(list)
     for node in genetree.traverse("postorder"):
         childlist = node.get_children()
         for child in childlist:
             B_array[lcamap[child]].append(node)
-        for i in xrange(0, len(childlist)-1):
-            B_array[getLca(specietree, [lcamap[childlist[i]], lcamap[childlist[i+1]]])].append(node)
+        for i in xrange(0, len(childlist) - 1):
+            B_array[getLca(specietree, [lcamap[childlist[i]],
+                                        lcamap[childlist[i + 1]]])].append(node)
 
     # Store all the specie tree nodes of the compresses child-image subtree I(g)
     # and construct all I(g)
-    # At this step, we are actually certain that the euler tour of S was already computed
+    # At this step, we are actually certain that the euler tour of S was
+    # already computed
     image_tree_nodes = ddict(list)
     for s in specietree.ind2node:
         for h in B_array[s]:
@@ -542,17 +774,17 @@ def getImageTreeNode(genetree, specietree, lcamap):
     for node in genetree.traverse("postorder"):
         nodecopied = {}
         if not image_tree_nodes[node]:
-            continue    
+            continue
         el1 = image_tree_nodes[node].pop()
         a = el1._copy_node(features=['name', 'depth'])
         nodecopied[el1] = a
-        while len(image_tree_nodes[node])>0:
+        while len(image_tree_nodes[node]) > 0:
             el2 = image_tree_nodes[node].pop()
             b = nodecopied.get(el2, None)
             if not b:
                 b = el2._copy_node(features=['name', 'depth'])
                 nodecopied[el2] = b
-            if (a!=b):
+            if (a != b):
                 if a.depth < b.depth:
                     if(b not in a.get_children()):
                         a.add_child(b)
@@ -562,6 +794,7 @@ def getImageTreeNode(genetree, specietree, lcamap):
             a = b
         image_tree[node] = a.get_tree_root()
     return image_tree
+
 
 def getSpecieGeneMap(genetree, specietree):
     """Find the reversed map (map between specietree node and genetree node)"""
@@ -602,16 +835,14 @@ def newickPreprocessing(newick, gene_sep=None):
                 nw = nw.replace(DEF_SEP_LIST[i], gene_sep)
 
             elif i >= len(DEF_SEP_LIST) or ';' in nw:
-                raise NewickError, \
-                    'Unable to format your newick file, Bad gene-specie separator or too much special chars'
+                raise NewickError('Unable to format your newick file, Bad gene-specie separator or too much special chars')
         nw += ';'
         return nw, gene_sep
     else:
-        raise NewickError, \
-            "'newick' argument must be either a filename or a newick string."
+        raise NewickError("'newick' argument must be either a filename or a newick string.")
 
 
-def polySolverPreprocessing(genetree, specietree, distance_file, capitalize=False, gene_sep=None, specie_pos="postfix", nFlagVal=1e305, nFlag=False, smap=None, errorproof=False):
+def polySolverPreprocessing(genetree, specietree, distance_mat, capitalize=False, gene_sep=None, specie_pos="postfix", nFlagVal=1e305, nFlag=False, smap=None, errorproof=False):
     """Preprocess genetree for polytomysolver
     """
 
@@ -648,8 +879,10 @@ def polySolverPreprocessing(genetree, specietree, distance_file, capitalize=Fals
     # genetree check
     if len(genetree) != len(set(genetree.get_leaf_names())):
         tmp_leaf_name = genetree.get_leaf_names()
-        duplicates = set([x for x in tmp_leaf_name if tmp_leaf_name.count(x) > 1])
-        raise ValueError("Your polytomy contains the following gene multiple times : %s"%", ".join(duplicates))
+        duplicates = set(
+            [x for x in tmp_leaf_name if tmp_leaf_name.count(x) > 1])
+        raise ValueError(
+            "Your polytomy contains the following gene multiple times : %s" % ", ".join(duplicates))
 
     # specietree input
     if isinstance(specietree, basestring):
@@ -658,46 +891,64 @@ def polySolverPreprocessing(genetree, specietree, distance_file, capitalize=Fals
     specietree.label_internal_node()
 
     # distance matrice input
-    if(distance_file):
-        gene_matrix, node_order = clu.distMatProcessor(
-            distance_file, nFlagVal, nFlag)
+    if(distance_mat):
+        if isinstance(distance_mat, basestring):
+            gene_matrix, node_order = clu.distMatProcessor(
+                distance_mat, nFlagVal, nFlag)
+        else:
+            # distance mat is provided as a boolean
+            # in that case, just try to get it from the genetree
+            gene_matrix, node_order = get_distance_from_tree(genetree)
         # Difference check 1
-        listerr = set(node_order).symmetric_difference(set(genetree.get_leaf_names()))
+        # pos = node_order.index('ENSDORP00000008194_dordii')
+        # print node_order
+        # print gene_matrix[pos, :]
+        listerr = set(node_order).symmetric_difference(
+            set(genetree.get_leaf_names()))
         if listerr:
             if not errorproof:
-                raise ValueError("Different genes in distance matrix and genetree\n : See symmetric difference : %s\n"%", ".join(listerr))
+                raise ValueError(
+                    "Different genes in distance matrix and genetree\n : See symmetric difference : %s\n" % ", ".join(listerr))
             else:
                 if gene_sep:
-                    resetNodeName(genetree, gene_sep)
+                    resetNodeName(genetree, gene_sep, specie_pos == 'postfix')
                 else:
-                    exib1 = set(node_order).difference(set(genetree.get_leaf_names()))
-                    exib2 = set(genetree.get_leaf_names()).difference(set(node_order))
+                    exib1 = set(node_order).difference(
+                        set(genetree.get_leaf_names()))
+                    exib2 = set(genetree.get_leaf_names()
+                                ).difference(set(node_order))
                     if exib2:
-                        raise Exception('Genes in trees and not in matrix : %s'%(exib2))
+                        raise Exception(
+                            'Genes in trees and not in matrix : %s' % (exib2))
                     elif exib1:
-                        print("Genes in matrix and not in tree : %s \nAttempt to correct distance matrix"%(", ".join(exib1)))
-                        for l in exib1 :
+                        print("Genes in matrix and not in tree : %s \nAttempt to correct distance matrix" % (
+                            ", ".join(exib1)))
+                        for l in exib1:
                             try:
                                 lpos = node_order.index(l)
-                                gene_matrix = clu.remove_ij(gene_matrix, lpos, lpos)
+                                gene_matrix = clu.remove_ij(
+                                    gene_matrix, lpos, lpos)
                                 del node_order[lpos]
                             except:
-                                raise IndexError("Could not remove gene %s from distance matrix"%l)
-        
-    #else:
-    #    # This is for debug, will never happen
-    #    print("error: dist file not found")
-    #    node_order = genetree.get_leaf_names()
-    #    # Alternative, retrieve aligned sequence and run phyML
-    #    gene_matrix = clu.makeFakeDstMatrice(len(node_order), 0, 1)
+                                raise IndexError(
+                                    "Could not remove gene %s from distance matrix" % l)
+
+    else:
+        # This is for debug, will never happen
+        raise ValueError(
+            "distance matrix not provided and could not be infered from tree")
+        # gene_matrix = clu.makeFakeDstMatrice(len(node_order), 0, 1)
 
     # Find list of species in genetree but not in specietree
     specieGeneList = set(genetree.get_leaf_species())
     specieList = set([x.name for x in specietree.get_leaves()])
     if(specieGeneList - specieList):
+        if len(specieGeneList.intersection(specieList)) == 0 and gene_sep:
+            raise Exception(
+                "*** You probably didn't set the correct species position for you input tree !!")
         raise Exception("Species in genetree but not in specietree : %s" % (
             ", ".join(specieGeneList - specieList)))
-    print len(node_order), 'after'
+
     return genetree, specietree, gene_matrix, node_order
 
 
@@ -735,11 +986,10 @@ def exportToOrthoXML(t, database='customdb', handle=sys.stdout):
     ortho_groups = orthoxml.groups()
     O.set_groups(ortho_groups)
 
-    # OrthoXML does not support duplication events to be at the root
+    # OrthoXML does not support duplication events at the root
     # of the tree, so we search for the top most speciation events in
     # the tree and export them as separate ortholog groups
-    is_speciation = lambda n: getattr(n, 'type', "") == "S" or not n.children
-    for speciation_root in t.iter_leaves(is_leaf_fn=is_speciation):
+    for speciation_root in t.iter_leaves(is_leaf_fn=(lambda n: getattr(n, 'type', "") == "S" or not n.children)):
         # Creates an orthogroup in which all events will be added
         node2event = {}
         node2event[speciation_root] = orthoxml.group()
@@ -786,7 +1036,7 @@ def generateSmap(specietree, output="smap", relaxed=False, suffix=""):
     for name in specie_names:
         if(relaxed):
             genes = re.compile(".*" + name + suffix + ".*", re.IGNORECASE)
-        else :
+        else:
             genes = re.compile("^" + name + suffix + ".*", re.IGNORECASE)
         gene_to_spec_map.append([genes.pattern, name])
     with open(output, "w") as f:
@@ -828,7 +1078,8 @@ def customTreeCompare(original_t, corrected_t, t):
 
     else:
         print("**Corrected tree doesn't follow patern")
-        print("\n".join(map(lambda x: "\t".join([str(v) for v in x]), ct_leaves)))
+        print("\n".join(map(lambda x: "\t".join(
+            [str(v) for v in x]), ct_leaves)))
 
     if(len(t_success) == len(t_leaves)):
         print("**Leave remaining success for tree")

@@ -11,26 +11,37 @@ from heapq import heappushpop, heappush
 
 
 class BranchRep:
-    
-    def __init__(self,part1, part2, btype):
-        self.part1 =  part1
-        self.part2 = part2
-        self.btype =  btype
+    # BranchRep(node, partition, isinternal)
+    def __init__(self, node, partition, nodetype):
+        self.node = node
+        self.node.sort_descendants(attr="species")
+
+        self.in_node, self.out_node = partition
+        self.part1 = [x.species for x in self.in_node]
+        self.part2 = [x.species for x in self.out_node]        
+        self.nodetype =  nodetype
     
     def get_hash(self, partition):
         return hashlib.sha384(",".join(sorted(partition))).hexdigest()
 
-    def link_leaf(self):
-        return self.btype == 0
-        
+    def _get_spec_nw(self):
+        new_t = self.node.copy()
+        for node in new_t:
+            node.name = node.species
+        return new_t.write(format=9)
+
     def __hash__(self):
-        return hash((self.get_hash(self.part1), self.get_hash(self.part2)))
+        hashp = self.get_hash(self.part1) + self.get_hash(self.part2)
+        return hash(hashlib.sha384(self._get_spec_nw()).hexdigest() + hashp)
     
+
     def __eq__(self, other):
-        p1 = self.get_hash(self.part1) == other.get_hash(other.part1)
-        p2 = self.get_hash(self.part2) == other.get_hash(other.part2)
-        return self.btype == other.btype and p1 and p2 
-    
+        same_hash = self.__hash__() == other.__hash__()
+        p1 = (sorted(self.part1), sorted(self.part2))
+        p2 = (sorted(other.part1), sorted(other.part2))
+        return same_hash and self.nodetype == other.nodetype and (p1 == p2 or p1 == p2[::-1])
+
+
 class Utils:
     
     @staticmethod
@@ -116,29 +127,23 @@ class Utils:
 
     @staticmethod
     def iter_partition(tree):
-        find_root = False
         for node in tree.iter_descendants("levelorder"):
             leafset1 = set(node.get_leaves())
             leafset2 = set(tree.get_leaves()) - leafset1
-            part1 =  [x.species for x in leafset1]
-            part2 =  [x.species for x in leafset2]
-            importance = 1
             if(not node.up.is_root()):
-                if node.is_leaf():
-                    importance = 0
-                yield part1, part2, leafset1, importance
-            elif not find_root:
-                find_root = True
-                yield part1, part2, leafset1, importance
+                yield node, (leafset1, leafset2), 1-node.is_leaf()
 
-            
+
     @staticmethod
-    def two_step_branch_selection(candbranch, prob):
-        btype = np.random.choice([1,0], p=[prob, 1-prob])
-        new_cands = [x for x in candbranch if x[0].btype == btype]
-        # if it's empty, then the list only contains abs(btype-1)
+    def two_step_branch_selection(candbranches, prob):
+        # this is the probability of choosing 
+        # internal branch over leaves
+        internal_or_leaf = np.random.choice([1,0], p=[prob, 1-prob])
+        new_cands = [x for x in candbranches if x[0].nodetype == internal_or_leaf]
+        # if it's empty, then the list only contains compatible leaves
+        # in that case, just selected a random branch
         if not new_cands:
-            new_cands = candbranch     
+            new_cands = candbranches     
         selected_branch = random.choice(new_cands)
         return selected_branch
     
@@ -148,16 +153,15 @@ class Utils:
         branch, nodelist = br
         g1_list = []
         g2_list = []
-        rf = g1.tree.robinson_foulds(g2.tree)
         for x  in nodelist:
             if x[-1] == 0:
                 g1_list.append(x[0])
             else:
                 g2_list.append(x[0])
-        x = np.random.choice(g1_list)
-        y = np.random.choice(g2_list)
-        g1swap = set.pop(x) if len(x)==1 else g1.tree.get_common_ancestor(x) 
-        g2swap = set.pop(y) if len(y)==1 else g2.tree.get_common_ancestor(y)
+        #print g1_list
+        #print g2_list
+        g1swap = g1_list[0]
+        g2swap = g2_list[0]
         g1_parent = g1swap.up
         g2_parent = g2swap.up
 
@@ -202,7 +206,23 @@ class Utils:
         if len(nlist)>1:
             n1, n2 = np.random.choice(nlist, 2, replace=False)
             n1.name, n2.name = n2.name, n1.name            
-    
+         
+
+    @staticmethod
+    def branch_is_valid(branch, gholder):
+        # branch should be present at both genome
+        # parent trees
+        gholder_type = set([x[-1] for x in gholder])
+        if len(gholder_type) < 2:
+            return False
+        else:
+            # branch should have the same count of leaves of same 
+            # species under it
+            # counter for species count at leaves
+            ln = [Counter([leaf.species for leaf in v[0]]) for v in gholder]
+            return all(x==ln[0] for x in ln)
+        
+
     @staticmethod
     def get_candtransfer_branches(genome):
 
@@ -222,6 +242,7 @@ class Utils:
         # Here we supposed that it's if donor and receiver are 
         # not sister. Could find better way to improve this though
         return donor[0] != receiver[0]
+
 
     @staticmethod
     def perform_SPR(tree, donor, receiver):
@@ -247,24 +268,7 @@ class Utils:
             Utils.perform_SPR(genome.tree, donor, receiver)
             genome.set_done_transfer()
         return genome
-         
 
-    @staticmethod
-    def branch_is_valid(branch, leafnodes):
-        # branch should be present 
-        if len(leafnodes) < 2:
-            return False
-        else:
-            multbrnch = set([x[-1] for x in leafnodes]) 
-            # branch should be present on both parent trees
-            if len(multbrnch) < 2:
-                return False
-            # branch should not be a single duplication node
-            ln = Counter([y for y in x[0] for x in leafnodes ])
-            if len(set(branch.part1)) == 1 and len(set(ln.values()))< 2 and len(branch.part1)==2:
-                return False
-            return True 
-         
 
     @staticmethod
     def crossover(genome, **args):
@@ -275,12 +279,12 @@ class Utils:
         prob = max(genome1.intbrnp, genome2.intbrnp)
         current_dict = ddict(list)
         for (gind, g) in enumerate([genome1, genome2]):
-            for part1, part2, nodes, imp in Utils.iter_partition(g.tree):
-                brnch = BranchRep(part1, part2, imp)
-                current_dict[brnch].append((nodes,gind))
-        
+            for node, partition, isinternal in Utils.iter_partition(g.tree):
+                brnch = BranchRep(node, partition, isinternal)
+                current_dict[brnch].append((node, gind))
         candidates = [(k,v) for k,v in current_dict.items() if Utils.branch_is_valid(k,v)]
         selected_branch = Utils.two_step_branch_selection(candidates, prob)
+
         return Utils.find_and_swap(selected_branch, genome1, genome2)
         
     

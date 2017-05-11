@@ -36,16 +36,17 @@ def compute_sh_test(cmd, title, basedir=os.path.abspath(os.getcwd())):
     get_rid_of(infofiles)
     return results
 
-def run_consel(inputfile, type, sort=9, basename="RAxML_perSiteLLs"):
+def run_consel(inputfile, type, sort=9, basedir=os.getcwd(), basename="RAxML_perSiteLLs"):
     makermtcmd = "makermt --%s %s" % (type, inputfile)
-    conselcmd = "consel %s" % basename
-    catpvcmd = "catpv %s > %s-pv.txt" % (basename, basename)
+    fname = os.path.join(basedir, basename)
+    conselcmd = "consel %s" % fname
+    catpvcmd = "catpv %s > %s-pv.txt" % (fname, fname)
     if sort:
         catpvcmd += " -s %s" % sort
     executeCMD(makermtcmd)
     executeCMD(conselcmd)
     executeCMD(catpvcmd)
-    conselOut = basename + "-pv.txt"
+    conselOut = fname + "-pv.txt"
     return parseConselOutfile(conselOut, sort)
 
 def parseConselOutfile(file, sort):
@@ -66,20 +67,22 @@ def parseConselOutfile(file, sort):
     return dict(zip(title, zip(*content)))
 
 
-def consel(cmd, title, basedir=os.getcwd()):
+def consel(cmd, title='consel', basedir=os.getcwd(), sort=9):
     cmd = cmd+ "-n %s -w %s" % (title, basedir)
     # run raxml
     executeCMD(cmd)
     infofiles = glob.glob("%s/RAxML*.%s" % (basedir,title))
     cons_input = glob.glob("%s/RAxML_perSiteLLs.%s" % (basedir,title))[0]
     # run consel
-    consel_output = run_consel(consel_input, 'puzzle', '.trees', sort)
+    consel_output = run_consel(cons_input, 'puzzle', sort=sort, basedir=basedir)
     infofiles.extend(glob.glob("%s/RAxML_perSiteLLs*" % (basedir)))
-    get_rid_of(infofiles)
+    #get_rid_of(infofiles)
+    print consel_output
+    sys.exit()
     return consel_output
 
 
-def executeCMD(cmd, dispout=False):
+def executeCMD(cmd, dispout=True):
     p = subprocess.Popen(
         cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
     out, err = p.communicate()
@@ -180,10 +183,14 @@ class LklModel():
         """Draw raxml tr -- adef and tr must have been previously defined"""
         print(self.curr_LH)
     
-    def compute_consel_test(self, *args):
+    def compute_consel_test(self, *args, **kwargs):
         """Compute consel output for a bunch of trees in argument"""
         # start by building a file with th two trees
         fd, treefile = tempfile.mkstemp('.trees')
+        alpha = kwargs.get('alpha', 0.05)
+        # get query tree position
+        # best tree at second position by default
+        querypos = kwargs.get('querypos', 2)
         os.close(fd)
         trees = []
         for t in args:
@@ -191,9 +198,11 @@ class LklModel():
         with open(treefile, 'w') as IN:
             IN.write("\n".join(trees))
         cmdline = self._build_cmd_line(treefile)
-        consel_output = consel(cmdline, "consel")
+        consel_output = consel(cmdline, "consel", basedir=self.wdir)
         os.remove(treefile)
-        return consel_output
+        item_pos = [int(x) for x in consel_output['item']].index(querypos)
+        return consel_output['au'][item_pos] < alpha
+
     
     def compute_lik_test(self, besttree, tree, test="SH", alpha=0.05):
         """Compute sh test between two trees"""
@@ -204,7 +213,10 @@ class LklModel():
         besttree.write(besttreefile)
         tree.write(curtreefile)
         cmdline  =  self._build_treecomp_line(besttreefile, curtreefile)
-        bestlk, treelk, p5, p2, p1 = compute_sh_test(cmdline, self.title, basedir=self.wdir)
+        if test == 'SH':
+            bestlk, treelk, p5, p2, p1 = compute_sh_test(cmdline, self.title, basedir=self.wdir)
+        else:
+            raise NotImplementedError("%s test statistic not implemented" % test)
         os.remove(curtreefile)
         os.remove(besttreefile)
         p = {0.05:p5, 0.02:p2, 0.01:p1}
@@ -253,6 +265,23 @@ class RAxMLModel():
         bestlk = self.optimize_model(besttree)
         pval, dnl = self._raxml.compute_lik_test(tree, test)
         return bestlk, None, pval>alpha 
+
+    def compute_consel_test(self, *args, **kwargs):
+        """Compute consel output for a bunch of trees in argument"""
+        # start by building a file with th two trees
+        fd, treefile = tempfile.mkstemp('.trees')
+        alpha = kwargs.get('alpha', 0.05)
+        os.close(fd)
+        trees = []
+        for t in args:
+            print t
+            trees.append(t.write())
+        with open(treefile, 'w') as IN:
+            IN.write("\n".join(trees))
+        cmdline = self._build_cmd_line(treefile)
+        consel_output = consel(cmdline, "consel", basedir=self.wdir)
+        os.remove(treefile)
+        return consel_output
 
 
     def print_raxml_tree(self, *args, **kargs):
@@ -353,6 +382,6 @@ class RAxML:
             # this is equivalent to testing sf(zscore)*2
             pval = sf(zscore)
         else:
-            raise Exception("%s test statistic not implemented" % test)
+            raise NotImplementedError("%s test statistic not implemented" % test)
 
         return pval, Dlnl

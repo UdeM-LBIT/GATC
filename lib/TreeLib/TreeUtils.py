@@ -1017,9 +1017,9 @@ def exportToOrthoXML(t, database='customdb', handle=sys.stdout):
                             "\n\nUnknown evolutionary event. %s" % ch.get_ascii())
 
                     if(ch.type == TreeClass.SPEC):
-                        parent_event.add_paralogGroup(node2event[ch])
-                    elif ch.type > 0:
                         parent_event.add_orthologGroup(node2event[ch])
+                    elif ch.type in TreeClass.DUP:
+                        parent_event.add_paralogGroup(node2event[ch])
                     else:
                         raise AttributeError(
                             "\n\Internals nodes labeled by losses are not expected in the orthoXML format")

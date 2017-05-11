@@ -49,6 +49,6 @@ setup(
     packages=['lib', 'lib.TreeLib', 'lib.raxmlib', 'lib.ga'],
     py_modules=[],
     scripts=['bin/gaperm'],
-    install_requires=['pyevolve', 'scipy', 'numpy', 'ete3', 'biopython'],
+    install_requires=['scipy', 'numpy', 'ete3', 'biopython'],
     ext_modules=[raxml_module]
     )

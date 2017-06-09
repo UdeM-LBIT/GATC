@@ -469,8 +469,6 @@ class SimulModel(object):
         event_logger['count'] = ecounter
         event_logger['transfers'] = transfers
         event_logger['events'] = events
-        for k, v in event_logger.items():
-            print k, "\n\t", v
 
         return gtree, event_logger
 

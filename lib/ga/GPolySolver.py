@@ -243,6 +243,56 @@ class Utils:
         # not sister. Could find better way to improve this though
         return donor[0] != receiver[0]
 
+    @staticmethod
+    def compute_height(node, hmap={}):
+        res = 0
+        if node.is_leaf():
+            res = 0
+        else:
+            res = 1 + max([hmap.get(x, compute_height(x, hmap)[0]) for x in node.get_children()])
+        hmap[node] = res
+        return res, hmap
+
+
+    @staticmethod
+    def no_recon_crossover(tree1, tree2):
+        # we are going to  assume that this is done ramd
+        child1 =  tree1.copy()
+        child2 =  tree2.copy()
+        # select a random internal branch and swap topology with the one of the second parent
+        internal_node = child1.get_tree_root().get_internal_node()
+        hmap = {}
+        in_prob = []
+        for n in internal_node:
+            h, hmap = Utils.compute_height(n, hmap)
+            in_prob.append(h)
+        in_prob = np.array(in_prob, dtype='float')
+        in_prob = in_prob/np.sum(in_prob)
+        print in_prob
+        subtree1 = np.random.choice(internal_node,  p=in_prob)
+        tmp =  tree2.copy()
+        tmp.prune(subtree1.get_leaf_names())
+        print "t1:  ", tmp
+        subtree1.replace_by(tmp)
+        
+        # same as above
+        internal_node = child2.get_tree_root().get_internal_node()
+        hmap = {}
+        in_prob = []
+        for n in internal_node:
+            h, hmap = Utils.compute_height(n, hmap)
+            in_prob.append(h)
+        in_prob = np.array(in_prob, dtype='float')
+        in_prob = in_prob/np.sum(in_prob)
+
+        subtree2 = np.random.choice(internal_node, p=in_prob)
+        tmp =  tree1.copy()
+        tmp.prune(subtree2.get_leaf_names())
+        print "t2:  ", tmp
+        subtree2.replace_by(tmp)
+        return child1, child2
+
+
 
     @staticmethod
     def perform_SPR(tree, donor, receiver):

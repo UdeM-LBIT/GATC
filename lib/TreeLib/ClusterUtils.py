@@ -100,6 +100,20 @@ def calculate_Q_matrix(matrice):
     return Q_matrix
 
 
+def compute_v(matrice):
+    # http://www.csc.kth.se/~isaac/publications/FNJ_technion_presentation.pdf
+    mask = np.ones(matrice.shape, dtype=bool)
+    np.fill_diagonal(mask, 0)
+    m_i, m_j = matrice.shape
+    # take the argmin at position that are not from the diagonal
+    tmp = matrice[mask].reshape((m_i, m_j-1)).argmin(1)
+    # little hack to find position according to matrice shape
+    tmp = tmp + ((tmp - np.arange(m_i))  >= 0)
+    V = []
+    for i, v in enumerate(tmp):
+        V.append((i, v, matrice[i,v]))
+    return V
+
 def paired_node_distance(matrice, smallest_index):
     i, j = smallest_index
     # i, j are the index of the recently joined node

@@ -10,25 +10,26 @@ class memorize(object):
 		self.function=function
 		self.cache={}
 
-	def __call__(self, hash, *args, **kwargs):
+	def __call__(self, hashrep, *args, **kwargs):
 		"""Call to memorize, (as decorator)"""
 
-		if hash in self.cache:
-			return self.cache[hash]
+		if hashrep in self.cache:
+			print "FUCK YEAHHHH"
+			return self.cache[hashrep]
 
-		elif not isinstance(hash, hashable) or hash is None:
-			#hash is None or uncachable
+		elif not isinstance(hashrep, hashable) or hashrep is None:
+			#hashrep is None or uncachable
 			return self.function(*args, **kwargs)
 
 		else:
 			output = self.function(*args, **kwargs)
-			self.cache[hash]=output
+			self.cache[hashrep]=output
 			return output
 
 	def __repr__(self):
 		"""Return cached data"""
-		for hash, data in self.cache:
-			print hash, '=============>\n', data
+		for hashrep, data in self.cache:
+			print hashrep, '=============>\n', data
 
 	def __get__(self, obj, objtype):
 		"""Instance methods support"""

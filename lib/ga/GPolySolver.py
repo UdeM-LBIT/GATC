@@ -255,47 +255,43 @@ class Utils:
 
 
     @staticmethod
-    def no_recon_crossover(tree1, tree2):
-        # we are going to  assume that this is done ramd
-        child1 =  tree1.copy()
-        child2 =  tree2.copy()
+    def no_recon_crossover(gdad, gmom):
+        # we are going to  assume that this is done ramdomly
+        gchild1 =  gdad.clone()
+        gchild2 =  gmom.clone()
+        tmp1 =  gchild1.tree.copy()
+        tmp2 =  ghild2.tree.copy()
         # select a random internal branch and swap topology with the one of the second parent
-        internal_node = child1.get_tree_root().get_internal_node()
+        internal_node = gchild1.tree.get_tree_root().get_internal_node()
         hmap = {}
         in_prob = []
-        for n in internal_node:
-            h, hmap = Utils.compute_height(n, hmap)
+        for inode in internal_node:
+            h, hmap = Utils.compute_height(inode, hmap)
             in_prob.append(h)
         in_prob = np.array(in_prob, dtype='float')
         in_prob = in_prob/np.sum(in_prob)
-        print in_prob
         subtree1 = np.random.choice(internal_node,  p=in_prob)
-        tmp =  tree2.copy()
-        tmp.prune(subtree1.get_leaf_names())
-        print "t1:  ", tmp
-        subtree1.replace_by(tmp)
+        tmp2.prune(subtree1.get_leaf_names())
+        subtree1.replace_by(tmp2)
         
-        # same as above
-        internal_node = child2.get_tree_root().get_internal_node()
+        # same as above but for second tree
+        internal_node = gchild2.tree.get_tree_root().get_internal_node()
         hmap = {}
         in_prob = []
-        for n in internal_node:
-            h, hmap = Utils.compute_height(n, hmap)
+        for inode in internal_node:
+            h, hmap = Utils.compute_height(inode, hmap)
             in_prob.append(h)
         in_prob = np.array(in_prob, dtype='float')
         in_prob = in_prob/np.sum(in_prob)
 
         subtree2 = np.random.choice(internal_node, p=in_prob)
-        tmp =  tree1.copy()
-        tmp.prune(subtree2.get_leaf_names())
-        print "t2:  ", tmp
-        subtree2.replace_by(tmp)
-        return child1, child2
-
+        tmp1.prune(subtree2.get_leaf_names())
+        subtree2.replace_by(tmp1)
+        return gchild1, gchild2
 
 
     @staticmethod
-    def perform_SPR(tree, donor, receiver):
+    def SPR_move(tree, donor, receiver):
         # detach 
         intruit =  donor[1].detach()
         donor[0].delete()
@@ -308,22 +304,28 @@ class Utils:
 
 
     @staticmethod
-    def perform_transfer(genome):
+    def performSPR(genome):
         # donnor and receiver are branches
         donor, receiver  = Utils.get_candtransfer_branches(genome)
         # can't give or receive at root
         if donor[0].is_root() or receiver[1].is_root():
             return genome
         elif Utils.is_suitable(donor, receiver):
-            Utils.perform_SPR(genome.tree, donor, receiver)
+            Utils.SPR_move(genome.tree, donor, receiver)
             genome.set_done_transfer()
         return genome
 
 
     @staticmethod
     def crossover(genome, **args):
-        gdad = args['dad']
-        gmom = args['mom']
+        if genome.reconcile:
+            return Utils.cost_preserve_crossover(args['dad'], args['mom'])
+        else:
+            return Utils.no_recon_crossover(args['dad'], args['mom'])
+
+
+    @staticmethod
+    def cost_preserve_crossover(gdad, gmom):
         genome1 = gdad.clone()
         genome2 = gmom.clone()
         prob = max(genome1.intbrnp, genome2.intbrnp)
@@ -344,41 +346,48 @@ class Utils:
         nspec = genome.get_spec_len()
         av_mutation =  args["pmut"]*nspec
         spec_list = genome.spcount.keys()
-        engine =  args['ga_engine']
         # here multiple mutations are wanted
         # we do exactly av_mutation 
         if engine.getParam('fastconv', False) and av_mutation >1.0:
             for i in range(int(np.ceil(av_mutation))):
                 # choose random species and mutate
-                spec = np.random.choice(spec_list)
-                Utils.permute_seq(genome, spec)
+                # or perform SPR randomly
+                if np.random.rand() > 0.5:
+                    spec = np.random.choice(spec_list)
+                    Utils.permute_seq(genome, spec)
+                else:
+                    Utils.performSPR(genome)
                 n_mutation += 1
-        # just do one mutation        
-        elif np.random.rand() < args["pmut"]:
-            # choose a random species and mutate it
-            # include only on mutation
-            n_mutation = 1
-            spec = np.random.choice(spec_list)
-            Utils.permute_seq(genome, spec)
-
-        if engine.pHGT and np.random.rand() < engine.pHGT:
-            # do random transfer on this tree
-            Utils.perform_transfer(genome)
+        
+        # just do one mutation, so no fastconv
+        else:
+            probmut = np.random.rand()  
+            if probmut <= args['pmut']:
+                if genome.reconcile:  
+                    Utils.performSPR(genome)    
+                else:
+                    spec = np.random.choice(spec_list)
+                    Utils.permute_seq(genome, spec)
+                n_mutation +=1
+            
         return n_mutation
 
     @staticmethod
     def evaluate(genome, **args):
         raxmlmodel = genome.model
-        score = raxmlmodel.optimize_model(genome.tree, **args)
-        return -score[0]
+        score, tree = raxmlmodel.optimize_model(genome.tree, expect_tree=True, **args)
+        # here we will updtate genome data
+        if tree:
+            genome.update_tree(tree[0])
+        if isinstance(score, list):
+            return -score[0]
+        return -score
     
     @staticmethod
     def costEvaluate(genome, **args):
-        sptree = args["sptree"]
-        d, t, l = args["dtlcost"]
-        score = TreeUtils.computeDTLScore(genome.tree, sptree, d, t, l)
-        return score
-
+        engine =  args['ga_engine']
+        return engine.recparam.computeRecCost(genome, **args)
+    
     @staticmethod
     def bulk_evaluate(genomes, **args):
         raxmlmodel = args.get('model', genomes[0].model)
@@ -396,8 +405,8 @@ class Utils:
 class GPolySolver(GenomeBase):
     
     gmap = {}
-    Transfer = False
-    def __init__(self, tree, model, intbrnp=0.95, gmap={}, is_init=False, transfer=False):
+    reconcile = True
+    def __init__(self, tree, model, dtlrates, erates, intbrnp=0.95, gmap={}, is_init=False):
         GenomeBase.__init__(self)
         self.tree =  tree
         #self.skeleton = self._get_sekeleton()
@@ -408,16 +417,17 @@ class GPolySolver(GenomeBase):
         if gmap:
             self.setGeneMap(gmap)
         self.spcount = None
+        self.dtlrates = dtlrates
+        self.erates = erates
         try:
             self.spcount =  Counter(tree.get_leaf_names())
         except:
             pass
         self.initializator.set(Utils.initialize)
         self.mutator.set(Utils.mutate)
+        
         self.evaluator.set(Utils.evaluate)
-        if transfer:
-            GPolySolver.Transfer = True
-        if GPolySolver.Transfer:
+        if GPolySolver.reconcile:
             self.evaluator.add(Utils.costEvaluate)
 
         self.crossover.set(Utils.crossover)
@@ -441,9 +451,27 @@ class GPolySolver(GenomeBase):
                         break
         return skeleton
 
+    def update_tree(self, t):
+        try:
+            t.set_outgroup(t.get_common_ancestor(self.tree.get_child_at(0).get_leaf_names()))
+        except:
+            t.set_outgroup(t.get_common_ancestor(self.tree.get_child_at(1).get_leaf_names()))
+        for node in self.tree.traverse():
+            for feat in node.features:
+                if feat not in ['support','dist','name']:
+                    if node.is_leaf():
+                        (t&node.name).add_feature(feat, node.get_feature(feat))
+                    else:
+                        t.get_common_ancestor(node.get_leaf_names()).add_feature(feat, node.get_feature(feat))
+        self.tree = t
+
     @classmethod
     def setGeneMap(clc, val):
         clc.gmap = val
+
+    @classmethod
+    def setReconcile(clc, recparam):
+        clc.reconcile = (recparam is not None)
 
     def initialize(self, **args):
         """ Called to initialize genome
@@ -469,19 +497,22 @@ class GPolySolver(GenomeBase):
         """
         GenomeBase.copy(self, g)
         g.tree =  self.tree.copy()
+        g.dtlrates = self.dtlrates.clone()
+        g.erates = self.erates.clone()
         g.spcount = self.spcount
         g.intbrnp = self.intbrnp
         g.model = self.model
         g.is_init = self.is_init
         g._done_transfer = False
-        
+    
+
     def clone(self):
         """ Clone this GenomeBase
         :rtype: the clone genome
         .. note:: If you are planning to create a new chromosome representation, you
             **must** implement this method on your class.
         """
-        newcopy = GPolySolver(None, None)
+        newcopy = GPolySolver(None, None,None, None)
         self.copy(newcopy)
         return newcopy
     

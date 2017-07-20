@@ -1,14 +1,13 @@
 
 # python libraries
 import sys, os, re
+import shutil
 import subprocess
 import glob
-
 import tempfile
 
 # import RAxML SWIG module
 import raxml
-
 from ..TreeLib import TreeClass
 from Bio import AlignIO
 
@@ -18,14 +17,20 @@ def get_rid_of(listfile):
         os.remove(f)
     
 
-def calculate_likelihood(cmd, title, ext="", basedir=os.path.abspath(os.getcwd()), size=1):
+def calculate_likelihood(cmd, title, ext="", basedir=os.path.abspath(os.getcwd()), size=1, log=False):
     cmd = cmd+ "-n %s -w %s" % (title+ext, basedir)
     rst = executeCMD(cmd)
     infofiles = glob.glob("%s/RAxML*.%s" % (basedir,title+ext))
-    f = [x for x in infofiles if 'info' in x][0]
-    likelihoods = extractRAXMLikelihood(f, size)
+    trees = []
+    if size == 1 and log :
+        f = [x for x in infofiles if '_log' in x][0]
+        likelihoods = extractLikelihoodFromLog(f, size)
+        trees = [TreeClass(x) for x in infofiles if '_result' in x]
+    else:
+        f = [x for x in infofiles if 'info' in x][0]
+        likelihoods = extractRAXMLikelihood(f, size)
     get_rid_of(infofiles)
-    return likelihoods
+    return likelihoods, trees
 
 def compute_sh_test(cmd, title, basedir=os.path.abspath(os.getcwd())):
     cmd = cmd+ "-n %s -w %s" % (title, basedir)
@@ -76,13 +81,11 @@ def consel(cmd, title='consel', basedir=os.getcwd(), sort=9):
     # run consel
     consel_output = run_consel(cons_input, 'puzzle', sort=sort, basedir=basedir)
     infofiles.extend(glob.glob("%s/RAxML_perSiteLLs*" % (basedir)))
-    #get_rid_of(infofiles)
-    print consel_output
-    sys.exit()
+    get_rid_of(infofiles)
     return consel_output
 
 
-def executeCMD(cmd, dispout=True):
+def executeCMD(cmd, dispout=False):
     p = subprocess.Popen(
         cmd, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
     out, err = p.communicate()
@@ -94,6 +97,15 @@ def executeCMD(cmd, dispout=True):
         print(out)
     return err
 
+def extractLikelihoodFromLog(filename, n):
+    lkls = []
+    with open(filename) as IN:
+        for line in IN:
+            lkls.append(float(line.strip().split()[-1]))
+            n -= 1
+            if n <= 0:
+                break
+    return lkls
 
 def extractRAXMLikelihood(filename, n):
     likelihoods = []
@@ -132,7 +144,7 @@ def extractSHTest(filename):
 
 class LklModel():
     """computes statitic using raxml command line"""
-    def __init__(self, alignment, cmd="raxmlHPC-SSE3", model="GTRGAMMA", eps=2.0, title="test", extra_string="", reestimate=False):
+    def __init__(self, alignment, cmd="raxmlHPC-SSE3", model="GTRGAMMA", eps=2.0, title="test", extra_string="", reestimate=True):
         self.alignment = alignment
         self.cmd = cmd
         fd, self.alignment = tempfile.mkstemp('.align')
@@ -150,12 +162,22 @@ class LklModel():
 
         get_rid_of(glob.glob("%s/RAxML*.%s" % (self.wdir,title)))
 
-    def _build_cmd_line(self, treefile):
-        bcmd = "-f g"
+    def __del__(self):
+        # release wdir garbage
+        shutil.rmtree(self.wdir, ignore_errors=True)
+
+    def _build_lkl_line(self, treefile, consel=False):
+        use_log = False
         if self.reestimate:
-            bcmd = "-f G"
-        cmdline = "%s %s -z %s -s %s -m %s %s"%(self.cmd, bcmd, treefile, self.alignment, self.model, self.extra)
-        return cmdline
+            if consel:
+                bcmd = "-f G -z"
+            else:
+                use_log = True
+                bcmd = "-f e -t"
+        else:
+            bcmd = "-f g -z"
+        cmdline = "%s %s %s -s %s -m %s %s"%(self.cmd, bcmd, treefile, self.alignment, self.model, self.extra)
+        return cmdline, use_log     
 
     def _build_treecomp_line(self, besttree, othertree):
         cmdline = "%s -f h -t %s -z %s -s %s -m %s %s"%(self.cmd, besttree, othertree, self.alignment, self.model, self.extra)
@@ -173,10 +195,15 @@ class LklModel():
                     GOUT.write(gt.write()+"\n")
         else:
             gtree.write(outfile=treefile)
-        cmdline = self._build_cmd_line(treefile)
-        self.currLH = calculate_likelihood(cmdline, self.title, ext=args.get("ext", ""), basedir=self.wdir, size=size)
+
+
+        cmdline, use_log = self._build_lkl_line(treefile)
+        self.currLH, best_trees = calculate_likelihood(cmdline, self.title, ext=args.get("ext", ""), basedir=self.wdir, size=size, log=use_log)
         #print treefile
         os.remove(treefile)
+
+        if args.get('expect_tree', False):
+            return self.currLH, best_trees
         return self.currLH
 
     def print_raxml_tree(self, *args, **kargs):
@@ -197,12 +224,11 @@ class LklModel():
             trees.append(t.write())
         with open(treefile, 'w') as IN:
             IN.write("\n".join(trees))
-        cmdline = self._build_cmd_line(treefile)
+        cmdline, _ = self._build_lkl_line(treefile, consel=True)
         consel_output = consel(cmdline, "consel", basedir=self.wdir)
         os.remove(treefile)
         item_pos = [int(x) for x in consel_output['item']].index(querypos)
         return consel_output['au'][item_pos] < alpha
-
     
     def compute_lik_test(self, besttree, tree, test="SH", alpha=0.05):
         """Compute sh test between two trees"""
@@ -265,24 +291,6 @@ class RAxMLModel():
         bestlk = self.optimize_model(besttree)
         pval, dnl = self._raxml.compute_lik_test(tree, test)
         return bestlk, None, pval>alpha 
-
-    def compute_consel_test(self, *args, **kwargs):
-        """Compute consel output for a bunch of trees in argument"""
-        # start by building a file with th two trees
-        fd, treefile = tempfile.mkstemp('.trees')
-        alpha = kwargs.get('alpha', 0.05)
-        os.close(fd)
-        trees = []
-        for t in args:
-            print t
-            trees.append(t.write())
-        with open(treefile, 'w') as IN:
-            IN.write("\n".join(trees))
-        cmdline = self._build_cmd_line(treefile)
-        consel_output = consel(cmdline, "consel", basedir=self.wdir)
-        os.remove(treefile)
-        return consel_output
-
 
     def print_raxml_tree(self, *args, **kargs):
         """Draw raxml tr -- adef and tr must have been previously defined"""

@@ -181,16 +181,19 @@ class GPopulation(object):
         self.scaleMethod.set(fn)
 
 
-    def getOrSetWeight(self):
+    def getOrSetWeight(self, lklscaled=None):
         # current value
         weight = self.getParam('weight', None)
         # if this value is not found
         if not weight:
             try:
-                lkldict = self.getStatistics(0)
                 costdict = self.getStatistics(1) 
                 ave_cost = costdict["rawAve"]
-                ave_lkl = lkldict["rawAve"]
+                if not lklscaled:
+                    lkldict = self.getStatistics(0)
+                    ave_lkl = lkldict["rawAve"]
+                else:
+                    ave_lkl = np.median(lklscaled) # should I take the mean instead ?
                 # get the closest power of 10 and take its inverse
                 weight = [1/(10**(round(np.log10(ave_lkl)) -1)), 1/(10**round(np.log10(ave_cost)))]
             except Exception as e:
@@ -220,7 +223,6 @@ class GPopulation(object):
                  will get a good tradeoff between the process communication speed and the
                  parallel evaluation.
 
-         .. versionadded:: 0.6
          The `setMultiProcessing` method.
 
         """
@@ -292,15 +294,16 @@ class GPopulation(object):
         len_pop = len(self)
 
         for ftfunc in xrange(nscore):
-            raw_sum = 0
+            raw_tot = []
 
             for ind in xrange(len_pop):
-                raw_sum += self[ind].score[ftfunc]
+                raw_tot.append(self[ind].score[ftfunc])
 
             keyfn = partial(key_raw_score, k=ftfunc)
             self.stats["rawMax"].append(max(self, key=keyfn).score[ftfunc])
             self.stats["rawMin"].append(min(self, key=keyfn).score[ftfunc])
-            self.stats["rawAve"].append(raw_sum / float(len_pop))
+            self.stats["rawAve"].append(np.mean(raw_tot))
+            self.stats["rawMed"].append(np.median(raw_tot))
 
             tmpvar = 0.0
             for ind in xrange(len_pop):
@@ -345,22 +348,16 @@ class GPopulation(object):
         :param index: the *index* best raw individual
         :rtype: the individual
 
-        .. versionadded:: 0.6
-        The parameter `index`.
-
         """
-
         if not self.sorted:
             self.sort(raw_score=score)
         return self.internalPopRaw[index]
 
+    
     def worstRaw(self, index=0, score=0):
         """ Return the worst raw score individual of population
 
         :rtype: the individual
-
-        .. versionadded:: 0.6
-         The parameter `index`.
 
         """
         if not self.sorted:
@@ -452,7 +449,7 @@ class GPopulation(object):
             logging.debug("Evaluating the population using the multiprocessing method")
             proc_pool = mp.Pool(processes=self.multiProcessing[2])
 
-         # Multiprocessing full_copy parameter
+        # Multiprocessing full_copy parameter
             if self.multiProcessing[1]:
                 results = proc_pool.map(m_e_f, enumerate(self.internalPop))
                 proc_pool.close()
@@ -548,9 +545,6 @@ class GPopulation(object):
             >>> population.setParams(tournamentPool=5)
 
         :param args: parameters to set
-
-        .. versionadded:: 0.6
-        The `setParams` method.
         """
         self.internalParams.update(args)
 

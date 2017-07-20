@@ -151,12 +151,12 @@ class GSimpleGA(object):
         
         self.nGenerations = Consts.CDefGAGenerations
         self.pMutation = Consts.CDefGAMutationRate
-        self.pHGT = 0
         self.pCrossover = Consts.CDefGACrossoverRate
         self.nElitismReplacement = Consts.CDefGAElitismReplacement
         self.minimax = Consts.CDefPopMinimax
         self.elitism = True
-
+        self.recparam = None
+        self.scaleparam = None
         self.time_init = None
         self.max_time = None
 
@@ -167,7 +167,6 @@ class GSimpleGA(object):
         self.allSlots = (self.selector, self.stepCallback, self.terminationCriteria)
 
         self.internalParams = {}
-
         self.currentGeneration = 0
 
         logging.debug("A GA Engine was created, nGenerations=%d", self.nGenerations)
@@ -306,9 +305,11 @@ class GSimpleGA(object):
         self.internalPop.setPopulationSize(size)
 
 
-    def setScaleMethod(self, fn):
+    def setScaleParam(self, param):
         """Setting scale method for the GA"""
-        self.internalPop.setScaleMethod(fn)
+        self.scaleparam = param
+        if param:
+            self.internalPop.setScaleMethod(param.get_scaling_func())
 
     
     def setRawSortMethod(self, fn):
@@ -327,15 +328,11 @@ class GSimpleGA(object):
         self.pMutation = rate
 
 
-    def setTransferParam(self, param):
-        """ Sets the mutation rate, between 0.0 and 1.0
-
-        :param rate: the rate, between 0.0 and 1.0
-
+    def setReconParam(self, recparam):
+        """ Set the reconciliation parameters
+        :param recparam: the reconciliation parameter instance
         """
-        self.pHGT = param.rate        
-        self.internalPop.setScaleMethod(param.getScaling())
-        self.internalPop.setParams(**param.__dict__)
+        self.recparam = recparam
 
 
     def setCrossoverRate(self, rate):
@@ -476,12 +473,12 @@ class GSimpleGA(object):
             genomeDad = self.select(popID=self.currentGeneration)
             t = time()
             if not crossover_empty and self.pCrossover >= 1.0:
-                for it in genomeMom.crossover.applyFunctions(mom=genomeMom, dad=genomeDad, count=2):
+                for it in genomeMom.crossover.applyFunctions(mom=genomeMom, dad=genomeDad):#, ga_engine=self):
                     (sister, brother) = it
                     break
             else:
                 if not crossover_empty and Util.randomFlipCoin(self.pCrossover):
-                    for it in genomeMom.crossover.applyFunctions(mom=genomeMom, dad=genomeDad, count=2):
+                    for it in genomeMom.crossover.applyFunctions(mom=genomeMom, dad=genomeDad):#, ga_engine=self):
                         (sister, brother) = it
                         break
                 else:
@@ -489,8 +486,8 @@ class GSimpleGA(object):
                     brother = genomeDad.clone()
             
             #self.printTimeElapsed("Crossover")
-            sister.mutate(pmut=self.pMutation, ga_engine=self)
-            brother.mutate(pmut=self.pMutation, ga_engine=self)
+            sister.mutate(pmut=self.pMutation)#, ga_engine=self)
+            brother.mutate(pmut=self.pMutation)#, ga_engine=self)
             #self.printTimeElapsed("Mutation")
             newPop.internalPop.append(sister)
             newPop.internalPop.append(brother)
@@ -500,22 +497,40 @@ class GSimpleGA(object):
             genomeDad = self.select(popID=self.currentGeneration)
 
             if Util.randomFlipCoin(self.pCrossover):
-                for it in genomeMom.crossover.applyFunctions(mom=genomeMom, dad=genomeDad, count=1):
+                for it in genomeMom.crossover.applyFunctions(mom=genomeMom, dad=genomeDad):#, ga_engine=self):
                     (sister, brother) = it
                     break
             else:
                 sister = random.choice([genomeMom, genomeDad])
                 sister = sister.clone()
-                sister.mutate(pmut=self.pMutation, ga_engine=self)
+                sister.mutate(pmut=self.pMutation)#, ga_engine=self)
 
             newPop.internalPop.append(sister)
 
         logging.debug("Evaluating the new created population.")
-        newPop.evaluate()
+        newPop.evaluate(ga_engine=self)
         # self.printTimeElapsed("Step")
 
+        if self.elitism:
+            t = time()
+            logging.debug("Doing elitism.")
+            if self.getMinimax() == Consts.minimaxType["maximize"]:
+                for i in xrange(self.nElitismReplacement):
+                    #re-evaluate before being sure this is the best
+                    #self.internalPop.bestRaw(i).evaluate()
+                    if self.internalPop.bestFitness(i).fitness > newPop.bestFitness(i).fitness:
+                        newPop[len(newPop) - 1 - i] = self.internalPop.bestFitness(i)
+                        # this force sorting again
+            elif self.getMinimax() == Consts.minimaxType["minimize"]:
+                for i in xrange(self.nElitismReplacement):
+                    # re-evaluate before being sure this is the best
+                    # self.internalPop.bestRaw(i).evaluate()
+                    # not need since score did not changed
+                    if self.internalPop.bestFitness(i).fitness < newPop.bestFitness(i).fitness:
+                        newPop[len(newPop) - 1 - i] = self.internalPop.bestFitness(i)
+            logging.debug("Elitism time %f" % (time() - t))
 
-        if self.getParam('fastconv', False):
+        elif self.getParam('fastconv', False):
             # lazyness overload
             t = time()
             logging.debug("Running in fastconv mode.")  
@@ -551,26 +566,9 @@ class GSimpleGA(object):
 
             logging.debug("FastConv time %f" % (time() - t))
 
-        if self.elitism:
-            t = time()
-            logging.debug("Doing elitism.")
-            if self.getMinimax() == Consts.minimaxType["maximize"]:
-                for i in xrange(self.nElitismReplacement):
-                    #re-evaluate before being sure this is the best
-                    #self.internalPop.bestRaw(i).evaluate()
-                    if self.internalPop.bestFitness(i).fitness > newPop.bestFitness(i).fitness:
-                        newPop[len(newPop) - 1 - i] = self.internalPop.bestFitness(i)
-                        # this force sorting again
-            elif self.getMinimax() == Consts.minimaxType["minimize"]:
-                for i in xrange(self.nElitismReplacement):
-                    # re-evaluate before being sure this is the best
-                    # self.internalPop.bestRaw(i).evaluate()
-                    # not need since score did not changed
-                    if self.internalPop.bestFitness(i).fitness < newPop.bestFitness(i).fitness:
-                        newPop[len(newPop) - 1 - i] = self.internalPop.bestFitness(i)
-            logging.debug("Elitism time %f" % (time() - t))
+
         self.internalPop = newPop
-        self.internalPop.sort()
+        self.internalPop.sort() #impotant
 
         logging.debug("The generation %d was finished.", self.currentGeneration)
 
@@ -632,7 +630,7 @@ class GSimpleGA(object):
         
         self.initialize()
         # self.printTimeElapsed("Initialize")
-        self.internalPop.evaluate()
+        self.internalPop.evaluate(ga_engine=self)
         # self.printTimeElapsed("Evaluate")
         self.internalPop.sort()
         # self.printTimeElapsed("Sort")

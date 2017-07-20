@@ -1,4 +1,3 @@
-git+https://github.com/maclandrol/Pyevolve
 biopython==1.65
 ete3
 matplotlib==1.5.1

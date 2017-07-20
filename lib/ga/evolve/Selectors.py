@@ -46,19 +46,12 @@ def GTournamentSelector(population, **args):
         the Tournament Selector uses the Roulette Wheel to
         pick individuals for the pool
 
-    .. versionchanged:: 0.6
-        Changed the parameter `poolSize` to the `tournamentPool`, now the selector
-        gets the pool size from the population.
-
     """
     choosen = None
     should_minimize = population.minimax == Consts.minimaxType["minimize"]
     minimax_operator = min if should_minimize else max
-
     poolSize = population.getParam("tournamentPool", Consts.CDefTournamentPoolSize)
     tournament_pool = [GRouletteWheel(population, **args) for i in xrange(poolSize)]
-
-    
     choosen = minimax_operator(tournament_pool, key=lambda ind: ind.fitness)
     
     return choosen
@@ -69,10 +62,6 @@ def GTournamentSelectorAlternative(population, **args):
     This Tournament Selector don't uses the Roulette Wheel
 
     It accepts the *tournamentPool* population parameter.
-
-    .. versionadded: 0.6
-        Added the GTournamentAlternative function.
-
     """
     pool_size = population.getParam("tournamentPool", Consts.CDefTournamentPoolSize)
     len_pop = len(population)

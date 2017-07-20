@@ -158,7 +158,7 @@ class TreeClass(TreeNode):
         else:
             if(self.up != node):
                 self, node = node, self
-            self.detach()
+            self.detach()            
             node.add_child(new_node)
             new_node.add_child(self)
             return node
@@ -178,12 +178,12 @@ class TreeClass(TreeNode):
         return len(self.get_tree_root().children) == 2
     
 
-    def is_ultrametric(self, error=0.001):
+    def is_ultrametric(self, error=0.001, attr="dist"):
         """Return True if tree is ultrametric"""
         if not self.is_rooted():
             return False
         else:
-            distlist = [l.dist for l in self]
+            distlist = [l.get_feature(attr) for l in self]
             d_to_root = distlist[0]
             for d in distlist:
                 if abs(d_to_root - d) > error:
@@ -479,6 +479,10 @@ class TreeClass(TreeNode):
         """Return weither or not this node has feature in its list of features"""
         return (feature in self.features and (name in [None, self.__getattribute__(feature)]))
 
+    def get_feature(self, feature):
+        """Return the value of a feature for this node"""
+        return getattr(self, feature)
+
     def reroot(self, root_node=True):
         """reroot tree at each node"""
         # self.label_internal_node()
@@ -668,65 +672,15 @@ class TreeClass(TreeNode):
             incomp_list = set([x for x in incomp_list if (x.brlen >= tlen and x.up.brlen <= tlen)])
         return incomp_list
 
-
-    def compute_branches_length(self):
+    def compute_branches_length(self, precision=6):
         """Compute and add branches len to each node"""
         self.add_features(brlen=0.0)
         for node in self.iter_descendants("preorder"):
             branch_len = node.up.brlen + node.dist
             node.add_features(brlen=branch_len)
-
-
-    def subdivize_into_timeframe(self, timeframes=[], eqdist=None, leaves_as_extant=True):
-        """Subdivize tree into timeframes and add label to nodes
-        timeframes can be a list of timestamp or a list of seed nodes.
-        if leaves_as_extant is set, leaves will always be in the last timeframe
-        """
-
-        if not (timeframes or eqdist):
-            raise ValueError("Both timeframes and eqdist cannot be undefined")
-
-        self.compute_branches_length()
-        desc = self.get_descendants()
-
-        if timeframes:
-            # now check if timeframes is a list of nodes instead
-            # then convert it to time
-            tf = []
-            selfinside = False
-            for v in timeframes:
-                if v==self:
-                    selfinside = True
-                    print 'loool'
-                elif isinstance(v, self.__class__) and v in desc:
-                    tf.append(v.brlen)
-                elif isinstance(v, float):
-                    tf.append(v)
-            if not selfinside:
-                tf.append(0.0)
-            timeframes = sorted(tf)
-
-        elif eqdist:
-            eqdist = int(eqdist)
-            assert eqdist!=0, "eqdist should be a positive integer"
-            furthest_from_self = self.get_farthest_leaf()
-            max_dist = furthest_from_self[1]
-            interval_t = max_dist / eqdist
-            timeframes = [i*interval_t for i in range(eqdist)] + [max_dist]
-
-        cur_time = 0
-        self.add_features(timestamp=cur_time)
-        self.add_features(time=timeframes[cur_time])
-        sorted_desc = sorted(desc, key=lambda x : x.brlen)
-        for node in sorted_desc:
-            while cur_time <len(timeframes) and node.brlen > timeframes[cur_time]:
-                cur_time += 1
-            cur_time = min(len(timeframes)-1, cur_time)
-            node.add_features(timestamp=cur_time)
-            node.add_features(time=timeframes[cur_time])
-            if node.is_leaf() and leaves_as_extant:
-                node.timestamp = len(timeframes)-1
-                node.time = timeframes[len(timeframes)-1]
+        if precision:
+            for node in self.iter_descendants():
+                node.brlen = round(node.brlen, precision)
 
 
     def get_children_species(self):

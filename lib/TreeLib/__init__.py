@@ -1,7 +1,5 @@
 from TreeClass import TreeClass
-import TreeUtils
-import ClusterUtils
-import SimulModel
+import TreeUtils, ClusterUtils, SimulModel, TreeFun
 from memorize import memorize
 import params
-__all__= ["TreeUtils", "ClusterUtils", "TreeClass", "memorize", "params", 'SimulModel']
+__all__= ["TreeUtils", "ClusterUtils", "TreeClass", "memorize", "params", 'SimulModel', 'TreeFun']

@@ -152,29 +152,37 @@ def LklCostScaling(pop):
     b = costdict["rawMax"] - a*lkldict["rawMax"]
     for p in pop:
         normalized_lklcost = (p.score[0]*a + b)
-        normalized_cost =  (p.score[1] -  costdict["rawAve"]) / costdict["rawDev"]*1.0
-        p.fitness =  normalized_lklcost + sigmoid(p.score[1], 'exp')
+        p.fitness =  normalized_lklcost + p.score[1]
 
 
-def WeightSigmoidScaling(pop, weight=[]):
-    if not weight:
-        weight =  pop.getOrSetWeight()
+def __scaleLKLToZero(pop, keepraw=True):
+    stat = pop.getStatistics()
+    lkldict = stat.getRawScore(0)
+    if keepraw:
+        min_lkl = 0
+    else:
+        min_lkl =  lkldict["rawMin"]
+    lklscaled_vec = []
     for p in pop:
-        p.fitness = sigmoid(weight[0]*p.score[0], 'exp') + sigmoid(weight[1]*p.score[1], 'exp')
+        x =  p.score[0] - min_lkl
+        lklscaled_vec.append(x)
+        p.setParams("lklscaled",x) # should be the same if keepraw
+    return lklscaled_vec
 
 
-def WeightScaling(pop, weight=[]):
-    # bad idead since we can not longer compare
-    # fitness between generations
-    #if not weight:
-    #    stat = pop.getStatistics()
-    #    lkldict = stat.getRawScore(0)
-    #    costdict = stat.getRawScore(1) 
-    #    weight = [1.0, 10.0*costdict["rawMax"]/lkldict["rawAve"]]
+def WeightSigmoidScaling(pop, weight=[], keepraw=True):
+    
+    lklscaled = __scaleLKLToZero(pop, keepraw)    
+    if not weight:
+        weight =  pop.getOrSetWeight(lklscaled)
+    for p in pop:
+        p.fitness = sigmoid(weight[0]*p.getParam('lklscaled'), 'exp') + sigmoid(weight[1]*p.score[1], 'exp')
 
+
+def WeightScaling(pop, weight=[], keepraw=True):
     # fix the weight for all generation
+    lklscaled = __scaleLKLToZero(pop, keepraw)
     if not weight:
-        weight =  pop.getOrSetWeight()
+        weight =  pop.getOrSetWeight(lklscaled)
     for p in pop:
-        p.fitness = np.dot(weight, p.score)
-
+        p.fitness = np.dot(weight, [p.getParam('lklscaled'), p.score[1]])

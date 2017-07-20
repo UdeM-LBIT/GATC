@@ -1,9 +1,9 @@
-# GAPol
-Genetic Algorithm for leaves labelling on a minimal reconciliation cost  gene tree.
+# GATC
+Genetic Algorithm for gene Trees Construction/Correction.
 
-GApol find the best tree (leaf labeling) from a list of unlabeled trees obtained using polytomysolver. The algorithm proceed by using a genetic algorithm to find the best candidates which are scored according to their likelihood. The binary is name 'gaperm'. 
+GATC find the best tree according to both sequence data and species tree reconciliation. The algorithm uses a genetic algorithm to find the best candidates which are scored according to their likelihood.
 
-gaperm --help
+gatc --help
 
 
 __optional arguments:__

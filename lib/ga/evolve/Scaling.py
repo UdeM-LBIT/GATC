@@ -166,7 +166,7 @@ def __scaleLKLToZero(pop, keepraw=True):
     for p in pop:
         x =  p.score[0] - min_lkl
         lklscaled_vec.append(x)
-        p.setParams("lklscaled",x) # should be the same if keepraw
+        p.setParams(lklscaled=x) # should be the same if keepraw
     return lklscaled_vec
 
 

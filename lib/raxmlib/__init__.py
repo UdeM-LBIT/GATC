@@ -13,9 +13,11 @@ from Bio import AlignIO
 
 
 def get_rid_of(listfile):
-    for f in listfile:
-        os.remove(f)
-    
+    for f in set(listfile):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
 
 def calculate_likelihood(cmd, title, ext="", basedir=os.path.abspath(os.getcwd()), size=1, log=False):
     cmd = cmd+ "-n %s -w %s" % (title+ext, basedir)
@@ -204,7 +206,7 @@ class LklModel():
 
         if args.get('expect_tree', False):
             return self.currLH, best_trees
-        return self.currLH
+        return self.currLH,  None
 
     def print_raxml_tree(self, *args, **kargs):
         """Draw raxml tr -- adef and tr must have been previously defined"""
@@ -284,7 +286,7 @@ class RAxMLModel():
         self._raxml.optimize_model(treefile, self.alignment,
                                    "-m %s -e %s -n %s %s" % (self.model, self.eps, self.title+args.get("ext", ""), self.extra))
         os.remove(treefile)
-        return self._raxml.best_LH
+        return self._raxml.best_LH, None
 
     def compute_lik_test(self, besttree, tree, test="SH", alpha=0.05):
         """Computes the test statistic 'stat' using RAxML likelihoods"""

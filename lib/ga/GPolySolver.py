@@ -375,6 +375,7 @@ class Utils:
     @staticmethod
     def evaluate(genome, **args):
         raxmlmodel = genome.model
+        
         score, tree = raxmlmodel.optimize_model(genome.tree, expect_tree=True, **args)
         # here we will updtate genome data
         if tree:
@@ -392,7 +393,7 @@ class Utils:
     def bulk_evaluate(genomes, **args):
         raxmlmodel = args.get('model', genomes[0].model)
         treelist = [g.tree for g in genomes]
-        scores = raxmlmodel.optimize_model(treelist, **args)
+        scores, _ = raxmlmodel.optimize_model(treelist, **args)
         if not len(scores)==len(treelist):
             print("Evaluation failed")
             print len(scores), ' <==score vs treelist===> ', len(treelist)

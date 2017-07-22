@@ -47,7 +47,6 @@ else:
     ]
 
 modules = raxml_module + recon_module
-print modules
 
 setup(
     name='gaperm',

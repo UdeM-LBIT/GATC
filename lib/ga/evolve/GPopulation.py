@@ -188,14 +188,16 @@ class GPopulation(object):
         if not weight:
             try:
                 costdict = self.getStatistics(1) 
-                ave_cost = costdict["rawAve"]
+                ave_cost = costdict["rawMed"]
                 if not lklscaled:
                     lkldict = self.getStatistics(0)
-                    ave_lkl = lkldict["rawAve"]
+                    ave_lkl = lkldict["rawMed"]
                 else:
-                    ave_lkl = np.median(lklscaled) # should I take the mean instead ?
+                    ave_lkl = np.median(lklscaled)
                 # get the closest power of 10 and take its inverse
-                weight = [1/(10**(round(np.log10(ave_lkl)) -1)), 1/(10**round(np.log10(ave_cost)))]
+                ave_lkl = max(0.1, 10**(round(np.log10(ave_lkl)) -1))
+                ave_cost = max(0.1, 10**round(np.log10(ave_cost)))
+                weight = [1.0/ave_lkl, 1.0/ave_cost]
             except Exception as e:
                 # fixed default value
                 weight = [0.001, 0.1]

@@ -1,6 +1,8 @@
 from collections import Hashable as hashable
 from functools import partial
+import shelve
 
+filename = "memorize"
 class memorize(object):
 	"""Cache function output when it's called and return it
 	later when the same function is called with the same input,
@@ -8,13 +10,12 @@ class memorize(object):
 	"""
 	def __init__(self, function):
 		self.function=function
-		self.cache={}
+		self.cache=shelve.open(filename)
 
 	def __call__(self, hashrep, *args, **kwargs):
 		"""Call to memorize, (as decorator)"""
 
-		if hashrep in self.cache:
-			print "FUCK YEAHHHH"
+		if self.cache.has_key(hashrep):
 			return self.cache[hashrep]
 
 		elif not isinstance(hashrep, hashable) or hashrep is None:
@@ -30,6 +31,16 @@ class memorize(object):
 		"""Return cached data"""
 		for hashrep, data in self.cache:
 			print hashrep, '=============>\n', data
+
+
+	def __exit__(self):
+		try:
+			self.cache.close()
+		except:
+			pass
+
+	def __del__(self):
+		self.__exit__()
 
 	def __get__(self, obj, objtype):
 		"""Instance methods support"""

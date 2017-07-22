@@ -41,6 +41,7 @@ class Statistics(object):
             "rawMin": [],
             "rawAve": [],
             "rawDev": [],
+            "rawMed": [],
             "rawVar": [],
             "fitMax": 0.0,
             "fitMin": 0.0,

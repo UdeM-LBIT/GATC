@@ -2,27 +2,29 @@ import numpy as np
 cimport numpy as np
 cimport cython
 
-@cython.wraparound(False)
-@cython.boundscheck(False)
-def computeQe(specietree, dict slicelist, list node_data, int discrsize, float drate, float trate, float lrate, float stemlen):
-    return c_computeQe(specietree, slicelist, node_data, discrsize, drate, trate, lrate, stemlen)
+cdef extern from "time.h" nogil:
+    ctypedef int time_t
+    time_t time(time_t*)
 
-@cython.wraparound(False)
-@cython.boundscheck(False)
+def computeQe(dict slicelist, list node_data, int discrsize, float drate, float trate, float lrate, float stemlen):
+    return c_computeQe(slicelist, node_data, discrsize, drate, trate, lrate, stemlen)
+
 def nodeLimitter(genetree, int discrsize, int leafslice):
     return c_nodeLimitter(genetree, discrsize, leafslice)
 
-@cython.boundscheck(False)
 def computeProb(rateDens, genetree not None, dict name2node, dict rankedge, list node_data, int discrsize, float stemlen, float drate, float trate, np.ndarray[np.float_t, ndim=4] Qef):
     return c_computeProb(rateDens, genetree, name2node, rankedge, node_data, discrsize, stemlen, drate, trate, Qef)
 
-cdef np.ndarray[np.float_t, ndim=4] c_computeQe(specietree, dict slicelist, list node_data, int discrsize, float drate, float trate, float lrate, float stemlen):
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+cdef np.ndarray[np.float_t, ndim=4] c_computeQe(dict slicelist, list node_data, int discrsize, float drate, float trate, float lrate, float stemlen):
     # should return a numpy array
     cdef:
         int ctmp_size
         int t
         int s
-        float h 
+        float h
         int e_ind
         int f_ind
         float wnorm
@@ -187,6 +189,9 @@ cpdef int get_discr_size(int gsize, int discrsize, int leafslice):
         discrsize += 1
     return discrsize
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
 cdef void c_nodeLimitter(genetree, int discrsize, int leafslice):
     # discrsize should be at list Number_of_internal + 1
     # this will attempt to find the genetree to species tree node mapping
@@ -229,6 +234,8 @@ cdef void c_nodeLimitter(genetree, int discrsize, int leafslice):
 
 
 @cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
 cdef np.float_t [:, :, :] c_computeProb(rateDens, genetree, dict name2node, dict rankedge, list node_data, int discrsize, float stemlen, float drate, float trate, np.ndarray[np.float_t, ndim=4] Qef):
                         
     cdef int gsize = len([gnode for gnode in genetree.traverse()])
@@ -251,20 +258,25 @@ cdef np.float_t [:, :, :] c_computeProb(rateDens, genetree, dict name2node, dict
         float t_z
         float dt
         int lowLim
-        int gnode_ind = 0
         float transtmp
         float duptmp
         int e
+        int e_discr
+        int linked_s_node
+        int t0
+        int t1
+        int t00
+        int t01
+        int t02
+        # list genelist = list(reversed(list(genetree.traverse("levelorder"))))
 
     for gnode in genetree.traverse("postorder"):
-        gnode.add_features(ind=gnode_ind)
-        gnode_ind += 1
 
         # we can use this occassion to compute s(e, u)
         gchild = [ch.ind for ch in gnode.get_children()]
         # print 'succcesss 1', gnode.is_leaf()
-
         if gnode.is_leaf():
+            t0 = time(NULL)
             linked_s_node = name2node[gnode.species]
 
             # gnode.dist is distance to parent
@@ -293,7 +305,7 @@ cdef np.float_t [:, :, :] c_computeProb(rateDens, genetree, dict name2node, dict
                         # nor adjacent. 
                         # e = <y, z>
                         # linked_s_node = x and f = <xx, x>
-                        prob_Se[gnode.ind, e, e_discr] = Qef[e, linked_s_node.edge_i, 0, e_discr+1]*sigma
+                        prob_Se[gnode.ind, e, e_discr] = Qef[e, linked_s_node, 0, e_discr+1]*sigma
                         #print 'mapping node'
                         #print linked_s_node
                         #print 'gnode'
@@ -302,7 +314,9 @@ cdef np.float_t [:, :, :] c_computeProb(rateDens, genetree, dict name2node, dict
                         #print node_data[e], "\t\t", e_discr
                         #print prob_Se[gnode.ind, e, e_discr]
                         # compute prob_Ax ==> never executed
-
+            t1 = time(NULL)
+            print(gnode)
+            print("finished in %f"%((t1 - t0)))
         else:
             # for gnode ==> use up time and low time
             # start by finding the time slice and the epoch
@@ -312,7 +326,14 @@ cdef np.float_t [:, :, :] c_computeProb(rateDens, genetree, dict name2node, dict
             # print gnode.upSlice, gnode.upTime
             # print gnode.lowSlice, gnode.lowTime
             # print '##################'
+            t0 = time(NULL)
+
             while gls > gnode.upSlice or (gls==gnode.upSlice and glt <= gnode.upTime):
+                print '**********'
+
+                print(glt, gls)
+                print gnode
+                t00 = time(NULL)
                 for e in rankedge[gls]:
                     transtmp = 0.0
                     duptmp = 0.0
@@ -333,7 +354,8 @@ cdef np.float_t [:, :, :] c_computeProb(rateDens, genetree, dict name2node, dict
                             transtmp *= trate*1.0 / (len(rankedge[gls]) -1)
                         duptmp = prob_Se[gchild[0], e, glt-1]*prob_Se[gchild[1], e, glt-1]
                         prob_Ax[gnode.ind, e, glt] = 2*drate*duptmp + transtmp
-
+                t01 = time(NULL)
+                print "first loop took: ", (t01-t00)
                 for e in rankedge[gls]:
                     transtmp = 0.0
                     duptmp = 0.0
@@ -372,8 +394,12 @@ cdef np.float_t [:, :, :] c_computeProb(rateDens, genetree, dict name2node, dict
                         
                         #print '*** a(x,u)',zedge, zls, zlt, prob_Ax[gnode.ind, zedge, zlt], Qef[e, zedge, zlt, glt+1]
                         #print node_data[zedge]
+                t02 = time(NULL)
+                print "second loop took: ", (t02-t01)
                 glt += 1
                 if glt >= discrsize:
                     gls -= 1
                     glt -= discrsize        
+            t1 = time(NULL)
+            print "Node done in ", (t1- t0)
     return prob_Ax

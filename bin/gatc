@@ -25,6 +25,7 @@ global BEST_IND, AVG_IND, WORST_IND, AVG_FIT
 BEST_IND, AVG_IND, WORST_IND, AVG_FIT = [], [], [], []
 
 
+VERSION = "1.0.0rc"
 class Output(object):
 
     def __init__(self, file=None):
@@ -283,26 +284,23 @@ def terminate_crit_wc(iloop, thresh, ga_engine):
 
 def terminate_crit_sh_test(known_best, alpha, ga_engine):
     # convergence based on distance between mean and max
-    best_ind = ga_engine.worstIndividual()
-    curtree = best_ind.tree
-    raxmlmod = best_ind.model
-    bestlk, treelk, sucess = raxmlmod.compute_lik_test(
+    worst_ind = ga_engine.worstIndividual()
+    curtree = worst_ind.tree
+    raxmlmod = worst_ind.model
+    bestlkl, success, dnlkl = raxmlmod.compute_lik_test(
         known_best, curtree, alpha=alpha)
-    if sucess:
-        return True
-    return False
+    return success
 
 
 def terminate_crit_au_test(known_best, alpha, ga_engine):
     # convergence based on distance between mean and max
-    best_ind = ga_engine.worstIndividual()
+    best_ind = ga_engine.bestIndividual()
+    worst_ind = ga_engine.worstIndividual()
     curtree = best_ind.tree
     raxmlmod = best_ind.model
     success = raxmlmod.compute_consel_test(
-        known_best, curtree, alpha=alpha, querypos=2)
-    if success:
-        return True
-    return False
+        known_best, curtree, worst_ind.tree, alpha=alpha, querypos=2)
+    return success
 
 
 def terminate_crit_conv(thresh, ga_engine):
@@ -359,7 +357,9 @@ def stepcallback(verbose, ga_engine):
 
 def print_output(treelist, outfile):
     outlog = Output(outfile) if outfile else Output()
-    for i, (score, tree) in enumerate(treelist):
+    for i,ind in enumerate(treelist):
+        score = ind.getRawScore()
+        tree =  best_ind.get_tree_with_br()
         s = "lkl=%.3f" % score[0]
         if len(score) > 1:
             s += " dtlrate=%.3f" % score[1]
@@ -438,6 +438,9 @@ if __name__ == '__main__':
 
     parser.add_argument('--plot_lkl', action='store_true',
                         help="Plot best ind likelihood for each generation")
+    parser.add_argument('--nout', type=int, default=1,
+                        help="Number of output trees to save")
+  
     parser.add_argument('--output', '-o', dest='output',
                         help="Output file in which best trees should be saved")
     parser.add_argument('--verbose', action="store_true",
@@ -501,6 +504,8 @@ if __name__ == '__main__':
                        '1.0f', '1.0f'], help="Edge rate variation parameter under a iid gamma")
     recon.add_argument('--discrsize', type=int, default=10,
                        help="Interval discretisation size for the species tree")
+    recon.add_argument('--eventselector', type=int, nargs=4, metavar=("spr", "reroot", "dtl", "edge"), default=[0.5, 0, 0.3, 0.2],
+                       help="Probability of selection for the following mutation: SPR, REROOT, DTL, EDGE. DTL and EDGE are set to zero when using parcimonie")
     recon.add_argument('--stemlen', type=float01, default=1.0,
                        help="Stem length for the species tree")
 
@@ -524,7 +529,7 @@ if __name__ == '__main__':
     permalgo.add_argument('--allsearch', nargs='?', type=notzero, const=1,
                           help="Perform all permutation on all input and return best trees. You can specifiy the number of trees you want. If you set it to a negative value, all trees will be returned")
 
-    main = ArgumentParser(prog='GATC', parents=[parser], description=DESC, version=VERSION)
+    main = ArgumentParser(prog='GATC', parents=[parser], description="GATC", version=VERSION)
     sub_parser = main.add_subparsers()
     sub_parser.dest = 'command'
 
@@ -661,7 +666,7 @@ if __name__ == '__main__':
             scalparam = ScalingParams(
                 args.weight, args.use_sigmoid, args.keepraw, args.rectype == 'par')
             recparam = ReconParams(args.sptree, len(treelist[
-                                   0]), discrsize=args.discrsize, parcim=args.rectype == 'par', stemlen=args.stemlen)
+                                   0]), discrsize=args.discrsize, parcim=args.rectype == 'par', stemlen=args.stemlen, event_selector=args.eventselector)
 
         # leave if that way to track of what i'm passing as argument
         ga = evolve_ga(treelist, raxmlmod, specmap, args.ngen,
@@ -670,8 +675,8 @@ if __name__ == '__main__':
                        termcrit=stopping.get(args.crit, None), mutrate=args.mutrate, elitism=args.elitism,
                        crossrate=args.crossrate, fastconv=args.fastconv, sclparam=scalparam, selector=selectors[args.selector])
 
-        best_ind = ga.bestIndividual()
-        res = [(best_ind.getRawScore(), best_ind.tree)]
+
+        res = [best_ind for best_ind in ga.bestNIndividuals(args.nout) ]
 
         if args.plot_lkl:
             import matplotlib.pyplot as plt

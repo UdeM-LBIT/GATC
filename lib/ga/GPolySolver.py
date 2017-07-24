@@ -475,18 +475,17 @@ class GPolySolver(GenomeBase):
             t.set_outgroup(t.get_common_ancestor(self.tree.get_child_at(1).get_leaf_names()))
         for node in self.tree.traverse():
             for feat in node.features:
-                if feat not in ['support','dist','name']:
+                if feat not in ['dist','name']:
                     if node.is_leaf():
                         (t&node.name).add_feature(feat, node.get_feature(feat))
                     else:
                         t.get_common_ancestor(node.get_leaf_names()).add_feature(feat, node.get_feature(feat))
         self.tree = t
 
-
     def get_tree_with_br(self):
         score, tree = self.model.optimize_model(self.tree, expect_tree=True, forcelog=True)
         if tree:
-            genome.update_tree(tree[0])
+            self.update_tree(tree[0])
         return self.tree
 
     @classmethod

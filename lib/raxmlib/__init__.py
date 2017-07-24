@@ -5,7 +5,7 @@ import shutil
 import subprocess
 import glob
 import tempfile
-
+import uuid
 # import RAxML SWIG module
 import raxml
 from ..TreeLib import TreeClass
@@ -35,18 +35,19 @@ def calculate_likelihood(cmd, title, ext="", basedir=os.path.abspath(os.getcwd()
     get_rid_of(infofiles)
     return likelihoods, trees
 
-def compute_sh_test(cmd, title, basedir=os.path.abspath(os.getcwd())):
-    cmd = cmd+ "-n %s -w %s" % (title, basedir)
+def compute_sh_test(cmd, title,ext="", basedir=os.path.abspath(os.getcwd())):
+    cmd = cmd+ "-n %s -w %s" % (title+ext, basedir)
     rst = executeCMD(cmd)
-    infofiles = glob.glob("%s/RAxML*.%s" % (basedir,title))
+    infofiles = glob.glob("%s/RAxML*.%s" % (basedir,title+ext))
     f = [x for x in infofiles if 'info' in x][0]
     results = extractSHTest(f)  
     get_rid_of(infofiles)
     return results
 
 def run_consel(inputfile, type, sort=9, basedir=os.getcwd(), basename="RAxML_perSiteLLs"):
-    makermtcmd = "makermt --%s %s" % (type, inputfile)
     fname = os.path.join(basedir, basename)
+    makermtcmd = "makermt --%s %s %s" % (type, inputfile, fname)
+    print makermtcmd
     conselcmd = "consel %s" % fname
     catpvcmd = "catpv %s > %s-pv.txt" % (fname, fname)
     if sort:
@@ -54,6 +55,7 @@ def run_consel(inputfile, type, sort=9, basedir=os.getcwd(), basename="RAxML_per
     executeCMD(makermtcmd)
     executeCMD(conselcmd)
     executeCMD(catpvcmd)
+    print fname
     conselOut = fname + "-pv.txt"
     return parseConselOutfile(conselOut, sort)
 
@@ -75,15 +77,16 @@ def parseConselOutfile(file, sort):
     return dict(zip(title, zip(*content)))
 
 
-def consel(cmd, title='consel', basedir=os.getcwd(), sort=9):
-    cmd = cmd+ "-n %s -w %s" % (title, basedir)
+def consel(cmd, title, ext="", basedir=os.getcwd(), sort=9):
+    title = "consel"+title
+    cmd = cmd+ " -n %s -w %s" % (title+ext, basedir)
     # run raxml
     executeCMD(cmd)
-    infofiles = glob.glob("%s/RAxML*.%s" % (basedir,title))
-    cons_input = glob.glob("%s/RAxML_perSiteLLs.%s" % (basedir,title))[0]
+    infofiles = glob.glob("%s/RAxML*.%s" % (basedir,title+ext))
+    cons_input = glob.glob("%s/RAxML_perSiteLLs.%s" % (basedir,title+ext))[0]
     # run consel
-    consel_output = run_consel(cons_input, 'puzzle', sort=sort, basedir=basedir)
-    infofiles.extend(glob.glob("%s/RAxML_perSiteLLs*" % (basedir)))
+    consel_output = run_consel(cons_input, 'puzzle', sort=sort, basedir=basedir, basename=title+ext)
+    infofiles.extend(glob.glob("%s/*%s*" % (basedir, title+ext)))
     get_rid_of(infofiles)
     return consel_output
 
@@ -163,24 +166,26 @@ class LklModel():
         if not os.path.exists(self.wdir):
             os.makedirs(self.wdir)
 
-        get_rid_of(glob.glob("%s/RAxML*.%s" % (self.wdir,title)))
+        get_rid_of(glob.glob("%s/RAxML*.%s*" % (self.wdir,self.title)))
 
     def __del__(self):
         # release wdir garbage
-        shutil.rmtree(self.wdir, ignore_errors=True)
+        #shutil.rmtree(self.wdir, ignore_errors=True)
+        get_rid_of(glob.glob("%s/RAxML*.%s*" % (self.wdir,self.title)))
 
     def _build_lkl_line(self, treefile, consel=False, forcelog=False):
         use_log = False
         if forcelog:
-            bcmd = "-f e -t"
+            bcmd = "-f e -t "
+            use_log = True
         elif self.reestimate:
             if consel:
-                bcmd = "-f G -z"
+                bcmd = "-f G -z" 
             else:
                 use_log = True
-                bcmd = "-f e -t"
+                bcmd = "-f e -t "
         else:
-            bcmd = "-f g -z"
+            bcmd = "-f g -z "
         cmdline = "%s %s %s -s %s -m %s %s"%(self.cmd, bcmd, treefile, self.alignment, self.model, self.extra)
         return cmdline, use_log     
 
@@ -203,7 +208,7 @@ class LklModel():
 
 
         cmdline, use_log = self._build_lkl_line(treefile, forcelog=args.get('forcelog', False))
-        self.currLH, best_trees = calculate_likelihood(cmdline, self.title, ext=args.get("ext", ""), basedir=self.wdir, size=size, log=use_log)
+        self.currLH, best_trees = calculate_likelihood(cmdline, self.title, ext=args.get("ext", uuid.uuid4().hex[:5]), basedir=self.wdir, size=size, log=use_log)
         #print treefile
         os.remove(treefile)
 
@@ -230,7 +235,7 @@ class LklModel():
         with open(treefile, 'w') as IN:
             IN.write("\n".join(trees))
         cmdline, _ = self._build_lkl_line(treefile, consel=True)
-        consel_output = consel(cmdline, "consel", basedir=self.wdir)
+        consel_output = consel(cmdline, self.title, ext=kwargs.get('ext',uuid.uuid4().hex[:5]), basedir=self.wdir)
         os.remove(treefile)
         item_pos = [int(x) for x in consel_output['item']].index(querypos)
         return all([x > alpha for x in consel_output['au']]) and abs(consel_output['np'][0] - consel_output['np'][item_pos]) < alpha
@@ -245,7 +250,7 @@ class LklModel():
         tree.write(curtreefile)
         cmdline  =  self._build_treecomp_line(besttreefile, curtreefile)
         if test == 'SH':
-            bestlk, treelk, p5, p2, p1 = compute_sh_test(cmdline, self.title, basedir=self.wdir)
+            bestlk, treelk, p5, p2, p1 = compute_sh_test(cmdline, self.title, ext=uuid.uuid4().hex[:5], basedir=self.wdir)
         else:
             raise NotImplementedError("%s test statistic not implemented" % test)
         os.remove(curtreefile)
@@ -261,7 +266,7 @@ class LklModel():
 class RAxMLModel():
     """Computes test statistics using RAxML site-wise likelihoods"""
 
-    def __init__(self, alignment, model="GTRGAMMA", eps=2.0, title="test", extra_string=""):
+    def __init__(self, alignment, model="GTRGAMMA", eps=2.0, title="", extra_string=""):
         """Initializes the RAxML model"""
         self._raxml = RAxML()
         self.model = model
@@ -273,6 +278,8 @@ class RAxMLModel():
 
         self.eps = eps
         self.title = title
+        if not title:
+            self.title = uuid.uuid4().hex[:5]
         self.extra = extra_string
 
     def __del__(self):

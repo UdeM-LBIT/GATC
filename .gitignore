@@ -1,6 +1,5 @@
 *db
 build/
-bin/gaperm
 data/
 ./gatc*
 .vscode/

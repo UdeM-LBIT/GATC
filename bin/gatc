@@ -624,7 +624,7 @@ if __name__ == '__main__':
 
     else:
         # stopping criterion management
-
+        step = False
         if args.crit or args.verbose or args.plot_lkl:
             step = True
         besttree = args.mltree

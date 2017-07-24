@@ -24,7 +24,9 @@ except ImportError:
 cmdclass = { }
 recon_module = []
 
-from lib import VERSION, DESC
+
+VERSION = "1.0.1rc"
+DESC = "GATC (Genetic Algorithm for Tree Construction/Correction) find the best tree from a list of candidate trees according to sequence likelihood and reconciliation with a species tree."
 
 extra_link_args = ['-lm']
 if sys.platform != 'darwin':
@@ -68,7 +70,7 @@ setup(
         'Topic :: Education',
         ],
 
-    packages=['lib', 'lib.TreeLib', 'lib.raxmlib', 'lib.ga', 'lib.reclkl'],
+    packages=['lib', 'lib.TreeLib', 'lib.raxmlib', 'lib.ga', 'lib.ga.evolve', 'lib.reclkl'],
     py_modules=[],
     scripts=['bin/gatc'],
     install_requires=['scipy', 'numpy', 'ete3', 'biopython'],

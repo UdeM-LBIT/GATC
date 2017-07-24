@@ -164,7 +164,10 @@ class LklModel():
         self.currLH = 0
         self.wdir = os.path.join(os.path.abspath(os.getcwd()), '_raxmltmp')
         if not os.path.exists(self.wdir):
-            os.makedirs(self.wdir)
+            try:
+                os.makedirs(self.wdir)
+            except OSError:
+                pass
 
         get_rid_of(glob.glob("%s/RAxML*.%s*" % (self.wdir,self.title)))
 

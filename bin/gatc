@@ -225,7 +225,7 @@ def evolve_ga(treelist, raxmlmod, specmap, ngen, popsize, freqstat, recparam, dt
 
     if verbose:
         evolve.logEnable()
-    if step or verbose:
+    if step:
         ga.stepCallback.set(partial(stepcallback, verbose))
 
     # Sets the DB Adapter, the resetDB flag will make the Adapter recreate
@@ -624,10 +624,10 @@ if __name__ == '__main__':
 
     else:
         # stopping criterion management
-        step = False
-        besttree = args.mltree
-        if args.crit == 'CONVD':
+
+        if args.crit or args.verbose or args.plot_lkl:
             step = True
+        besttree = args.mltree
         if args.crit == 'AU':
             btype, status = check_binaries(['consel'])
             if not status:

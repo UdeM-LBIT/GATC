@@ -47,7 +47,6 @@ def compute_sh_test(cmd, title,ext="", basedir=os.path.abspath(os.getcwd())):
 def run_consel(inputfile, type, sort=9, basedir=os.getcwd(), basename="RAxML_perSiteLLs"):
     fname = os.path.join(basedir, basename)
     makermtcmd = "makermt --%s %s %s" % (type, inputfile, fname)
-    print makermtcmd
     conselcmd = "consel %s" % fname
     catpvcmd = "catpv %s > %s-pv.txt" % (fname, fname)
     if sort:
@@ -55,7 +54,6 @@ def run_consel(inputfile, type, sort=9, basedir=os.getcwd(), basename="RAxML_per
     executeCMD(makermtcmd)
     executeCMD(conselcmd)
     executeCMD(catpvcmd)
-    print fname
     conselOut = fname + "-pv.txt"
     return parseConselOutfile(conselOut, sort)
 

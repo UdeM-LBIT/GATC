@@ -424,6 +424,9 @@ class GSimpleGA(object):
         """
         return self.internalPop.bestFitness()
 
+    def bestNIndividuals(self, nsize=1):
+        return [self.internalPop.bestFitness(x) for x in xrange(nsize)]
+
     def worstIndividual(self):
         """ Returns the population worst individual
 
@@ -486,8 +489,8 @@ class GSimpleGA(object):
                     brother = genomeDad.clone()
             
             #self.printTimeElapsed("Crossover")
-            sister.mutate(pmut=self.pMutation)#, ga_engine=self)
-            brother.mutate(pmut=self.pMutation)#, ga_engine=self)
+            sister.mutate(pmut=self.pMutation, ga_engine=self)
+            brother.mutate(pmut=self.pMutation, ga_engine=self)
             #self.printTimeElapsed("Mutation")
             newPop.internalPop.append(sister)
             newPop.internalPop.append(brother)
@@ -503,7 +506,7 @@ class GSimpleGA(object):
             else:
                 sister = random.choice([genomeMom, genomeDad])
                 sister = sister.clone()
-                sister.mutate(pmut=self.pMutation)#, ga_engine=self)
+                sister.mutate(pmut=self.pMutation, ga_engine=self)
 
             newPop.internalPop.append(sister)
 
@@ -591,7 +594,6 @@ class GSimpleGA(object):
         percent = self.currentGeneration * 100 / float(self.nGenerations)
         message = "Gen. %d (%.2f%%):" % (self.currentGeneration, percent)
         logging.info(message)
-        print message,
         sys_stdout.flush()
         self.internalPop.statistics()
         stat_ret = self.internalPop.printStats()
@@ -624,7 +626,7 @@ class GSimpleGA(object):
         """
 
         stopFlagCallback = False
-        stopFlagTerminationCriteria = False
+        stopFlagTerminationCriteria = []
 
         self.time_init = time()
         
@@ -643,18 +645,20 @@ class GSimpleGA(object):
 
                 if not self.terminationCriteria.isEmpty():
                     for it in self.terminationCriteria.applyFunctions(self):
-                        stopFlagTerminationCriteria = it
+                        stopFlagTerminationCriteria.append(it)
 
                 if freq_stats:
                     if (self.currentGeneration % freq_stats == 0) or (self.getCurrentGeneration() == 0):
                         self.printStats()
-                        self.printTimeElapsed("Generation")
+                        self.printTimeElapsed("Generations")
 
-                if stopFlagTerminationCriteria:
+                if any(stopFlagTerminationCriteria):
                     logging.debug("Evolution stopped by the Termination Criteria !")
                     if freq_stats:
                         print "\n\tEvolution stopped by Termination Criteria function !\n"
-                        print self.terminationCriteria
+                        for _i, _v in enumerate(stopFlagTerminationCriteria):
+                            if _v:
+                                print self.terminationCriteria.getFuncStr(_i)
                     break
 
                 if stopFlagCallback:
@@ -673,7 +677,7 @@ class GSimpleGA(object):
 
         if freq_stats != 0:
             self.printStats()
-            self.printTimeElapsed("Generation")
+            self.printTimeElapsed("Generations")
 
         return self.bestIndividual()
 

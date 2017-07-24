@@ -171,7 +171,7 @@ def evolve_ga(treelist, raxmlmod, specmap, ngen, popsize, freqstat, recparam, dt
     GPolySolver.setReconcile(recparam)
     glist = set(itertools.chain(*specmap.values()))
     genomes = [GPolySolver(x, raxmlmod, is_init=is_inited(
-        x, glist), dtlrates=dtl, erates=edgerates) for x in treelist]
+        x, glist), dtlrates=dtl.clone(), erates=edgerates.clone()) for x in treelist]
     gpop = GPopulation.GPopulation(genomes, single=False)
 
     if not raxmlmod.reestimate:
@@ -347,15 +347,13 @@ def stepcallback(verbose, ga_engine):
         print("Population size : %d" % len(ga_engine.internalPop))
         for i, p in enumerate(ga_engine.internalPop):
             print "Ind %d" % i,  p.score, p.fitness
-            print p.tree
+            # print p.tree
             print '------------------------------'
         print("Best individual score : %s" %
               ", ".join(["%.2f" % x for x in BEST_IND[-1]]))
         print("Worst individual score : %s" %
               ", ".join(["%.2f" % x for x in WORST_IND[-1]]))
-        print("Average individual score : %s" %
-              ", ".join(["%.2f" % x for x in stat['rawAve']]))
-
+      
     return False
 
 
@@ -629,7 +627,8 @@ if __name__ == '__main__':
             btype, status = check_binaries(['consel'])
             if not status:
                 raise ArgumentError("AU stop criterion not available without consel binaries")
-        elif args.crit in ['SH', 'AU']:
+        if args.crit in ['SH', 'AU']:
+
             if not besttree:
                 raise ArgumentError(
                     "Best ML tree not found for SH stopping criterion")
@@ -676,9 +675,9 @@ if __name__ == '__main__':
 
         if args.plot_lkl:
             import matplotlib.pyplot as plt
-            print 'BEST_IND',  BEST_IND
-            print 'AVG_IND',  AVG_IND
-            print 'WORST_IND',  WORST_IND
+            #print 'BEST_IND',  BEST_IND
+            #print 'AVG_IND',  AVG_IND
+            #print 'WORST_IND',  WORST_IND
             BEST_IND = np.array(BEST_IND)
             AVG_IND = np.array(AVG_IND)
             WORST_IND = np.array(WORST_IND)

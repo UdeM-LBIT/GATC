@@ -23,10 +23,12 @@ class EdgeParams:
         self.theta = (self.sigma**2)/self.mu
 
     def _getparam(self, param, name):
-        EdgeParams.ISFixed[name] = False
-        if isinstance(param, basestring) and param[-1] in ['f', 'F']:
-            EdgeParams.ISFixed[name] =  True
-            return float(param[:-1])
+        if isinstance(param, basestring):
+            if param[-1] in ['f', 'F']:
+                EdgeParams.ISFixed[name] =  True
+                return float(param[:-1])
+            else:
+                EdgeParams.ISFixed[name] = False
         return float(param)
 
     def get_shape(self):
@@ -44,9 +46,9 @@ class EdgeParams:
 
     def mutate(self):
         other = self.clone()
-        poss_choice = [k for k in EdgeParams.ISFixed.keys() if not DTLParams.ISFixed[k]]
+        poss_choice = [k for k in EdgeParams.ISFixed.keys() if not EdgeParams.ISFixed[k]]
         if len(poss_choice) > 0:
-            param = random.choices(poss_choice)
+            param = random.choice(poss_choice)
             setattr(other, param, min(EdgeParams.rateLimit[1], max(random.gauss(getattr(other, param), EdgeParams.rateLimit[-1]), EdgeParams.rateLimit[0])))
             other.update()
         return other
@@ -70,11 +72,17 @@ class DTLParams:
     def is_mutable(self):
         return not all(DTLParams.ISFixed.values())
 
+    def clone(self):
+        other = DTLParams((self.dup, self.trans, self.loss), parcim=self.parcim)
+        return other
+
     def _getparam(self, param, name):
-        DTLParams.ISFixed[name] = False
-        if isinstance(param, basestring) and param[-1] in ['f', 'F']:
-            DTLParams.ISFixed[name] = True
-            return float(param[:-1])
+        if isinstance(param, basestring):
+            if param[-1] in ['f', 'F']:
+                DTLParams.ISFixed[name] = True
+                return float(param[:-1])
+            else: 
+                DTLParams.ISFixed[name] = False
         return float(param)
 
     def getDup(self):
@@ -92,14 +100,11 @@ class DTLParams:
     def getDTL(self):
         return (self.dup, self.trans, self.loss)
 
-    def clone(self):
-        other = copy.deepcopy(self)
-
-    def mutate(self, delta=0.01):
+    def mutate(self):
         other = self.clone()
         poss_choice = [k for k in DTLParams.ISFixed.keys() if not DTLParams.ISFixed[k]]
         if len(poss_choice) > 0:
-            param = random.choices(poss_choice)
+            param = random.choice(poss_choice)
             setattr(other, param, min(DTLParams.rateLimit[1], max(random.gauss(getattr(other, param), DTLParams.rateLimit[-1]), DTLParams.rateLimit[0])))
         return other
 
@@ -110,16 +115,36 @@ class DTLParams:
 class ReconParams(object):
     """Little class to keep
     transfer parameter"""
-    def __init__(self, sptree, gtreesize, discrsize=10, parcim=False, stemlen=1.0):
+    EVENT_LIST = ["SPR", "ROOT", "DTL", "EDGE"]
+    def __init__(self, sptree, gtreesize, discrsize=10, parcim=False, stemlen=1.0, event_selector=[0.5, 0, 0.2, 0.3]):
         self.sptree = TreeClass(sptree)
         self.gtreesize = gtreesize
         self.discrsize =  discrsize
         self.stemlen = stemlen
         self.parcim = parcim
         self.data = {}
-        
+        self.default_event_selector = self._fixed_event_list(event_selector)
         self._spectree_preprocess()
-            
+          
+
+    def _fixed_event_list(self, event_selector=None):
+        if not event_selector:
+            event_selector = self.default_event_selector
+        tot_event = sum(event_selector)
+        tot_event_at_zero = len([x for x in event_selector if x==0.0])
+        diffprob = (tot_event - 1.0)/(4-tot_event_at_zero)
+        return [(x - diffprob if x else x) for x in event_selector]
+
+
+    def select_event(self, genome):
+        if not genome.dtlrates.is_mutable():
+            self.default_event_selector[2]=0.0
+        if not genome.erates.is_mutable():
+            self.default_event_selector[3]=0.0
+        self.default_event_selector = self._fixed_event_list()
+        choice = np.random.choice(ReconParams.EVENT_LIST,1, p=self.default_event_selector)
+        return choice
+
     def _spectree_preprocess(self):
         if self.parcim:
             self.sptree.label_internal_node()

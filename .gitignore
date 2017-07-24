@@ -1,7 +1,8 @@
 *db
 build/
+bin/gaperm
 data/
-./gatc
+./gatc*
 .vscode/
 *png
 *jpg

@@ -195,8 +195,8 @@ class GPopulation(object):
                 else:
                     ave_lkl = np.median(lklscaled)
                 # get the closest power of 10 and take its inverse
-                ave_lkl = max(0.1, 10**(round(np.log10(ave_lkl)) -1))
-                ave_cost = max(0.1, 10**round(np.log10(ave_cost)))
+                ave_lkl = max(1, 10**(round(np.log10(ave_lkl)) -1))
+                ave_cost = max(1, 10**round(np.log10(ave_cost)))
                 weight = [1.0/ave_lkl, 1.0/ave_cost]
             except Exception as e:
                 # fixed default value
@@ -272,6 +272,7 @@ class GPopulation(object):
     def clearFlags(self):
         """ Clear the sorted and statted internal flags """
         self.sorted = False
+        self.stats.clear()
         self.statted = False
 
     def getStatistics(self, ftfunc=None):

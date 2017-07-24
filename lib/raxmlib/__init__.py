@@ -10,7 +10,8 @@ import tempfile
 import raxml
 from ..TreeLib import TreeClass
 from Bio import AlignIO
-
+from scipy.stats import norm
+sf = norm.sf
 
 def get_rid_of(listfile):
     for f in set(listfile):
@@ -168,9 +169,11 @@ class LklModel():
         # release wdir garbage
         shutil.rmtree(self.wdir, ignore_errors=True)
 
-    def _build_lkl_line(self, treefile, consel=False):
+    def _build_lkl_line(self, treefile, consel=False, forcelog=False):
         use_log = False
-        if self.reestimate:
+        if forcelog:
+            bcmd = "-f e -t"
+        elif self.reestimate:
             if consel:
                 bcmd = "-f G -z"
             else:
@@ -199,7 +202,7 @@ class LklModel():
             gtree.write(outfile=treefile)
 
 
-        cmdline, use_log = self._build_lkl_line(treefile)
+        cmdline, use_log = self._build_lkl_line(treefile, forcelog=args.get('forcelog', False))
         self.currLH, best_trees = calculate_likelihood(cmdline, self.title, ext=args.get("ext", ""), basedir=self.wdir, size=size, log=use_log)
         #print treefile
         os.remove(treefile)
@@ -230,7 +233,7 @@ class LklModel():
         consel_output = consel(cmdline, "consel", basedir=self.wdir)
         os.remove(treefile)
         item_pos = [int(x) for x in consel_output['item']].index(querypos)
-        return consel_output['au'][item_pos] < alpha
+        return all([x > alpha for x in consel_output['au']]) and abs(consel_output['np'][0] - consel_output['np'][item_pos]) < alpha
     
     def compute_lik_test(self, besttree, tree, test="SH", alpha=0.05):
         """Compute sh test between two trees"""
@@ -248,7 +251,7 @@ class LklModel():
         os.remove(curtreefile)
         os.remove(besttreefile)
         p = {0.05:p5, 0.02:p2, 0.01:p1}
-        return bestlk, treelk, p.get(alpha, False)    
+        return bestlkl, p.get(alpha, p5), treelk - bestlkl
 
     def __eq__(self, other):
         return (self.alignment == other.alignment) and (self.model == other.model) and (self.cmd == other.cmd)
@@ -292,7 +295,7 @@ class RAxMLModel():
         """Computes the test statistic 'stat' using RAxML likelihoods"""
         bestlk = self.optimize_model(besttree)
         pval, dnl = self._raxml.compute_lik_test(tree, test)
-        return bestlk, None, pval>alpha 
+        return bestlk, pval>alpha, dnl
 
     def print_raxml_tree(self, *args, **kargs):
         """Draw raxml tr -- adef and tr must have been previously defined"""

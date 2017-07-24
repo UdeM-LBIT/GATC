@@ -70,7 +70,7 @@ setup(
 
     packages=['lib', 'lib.TreeLib', 'lib.raxmlib', 'lib.ga', 'lib.reclkl'],
     py_modules=[],
-    scripts=['bin/gaperm'],
+    scripts=['bin/gatc'],
     install_requires=['scipy', 'numpy', 'ete3', 'biopython'],
     cmdclass=cmdclass,
     ext_modules=modules

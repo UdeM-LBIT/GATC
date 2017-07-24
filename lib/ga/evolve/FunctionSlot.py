@@ -203,3 +203,19 @@ class FunctionSlot(object):
             strRet += "\t\tName: %s - Weight: %.2f\n" % (fname, w)
 
         return strRet
+
+    def getFuncStr(self, ind):
+        strRet = ""
+        if ind >= len(self.funcList) or ind <0:
+            raise ValueError("Index is not valid")
+        else:
+            f = self.funcList[ind]
+            fname = "-"
+            try: 
+                fname = f.func_name
+            except AttributeError:
+                fname =  f.func.func_name
+            strRet = "\tName: %s\n" % (fname)
+        return strRet
+
+

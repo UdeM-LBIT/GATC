@@ -50,6 +50,11 @@ class Utils:
         for k,v in gmap.items():
             perm_keeper[k] = [x for x in permutations(v)]
         return perm_keeper
+
+    @staticmethod
+    def reroot(genome):
+        genome.tree = next(genome.tree.edge_reroot())
+        return genome
     
     @staticmethod
     def best_tree_finder(trees, raxmlmod, gmap, ntrees, timelimit=None):
@@ -317,8 +322,9 @@ class Utils:
 
 
     @staticmethod
-    def crossover(genome, **args):
-        if genome.reconcile:
+    def crossover(obj, **args):
+
+        if args['mom'].reconcile:
             return Utils.cost_preserve_crossover(args['dad'], args['mom'])
         else:
             return Utils.no_recon_crossover(args['dad'], args['mom'])
@@ -345,12 +351,13 @@ class Utils:
         n_mutation = 0
         nspec = genome.get_spec_len()
         av_mutation =  args["pmut"]*nspec
+        engine = args["ga_engine"]
         spec_list = genome.spcount.keys()
         # here multiple mutations are wanted
         # we do exactly av_mutation 
         if engine.getParam('fastconv', False) and av_mutation >1.0:
             for i in range(int(np.ceil(av_mutation))):
-                # choose random species and mutate
+                #crossover choose random species and mutate
                 # or perform SPR randomly
                 if np.random.rand() > 0.5:
                     spec = np.random.choice(spec_list)
@@ -363,8 +370,17 @@ class Utils:
         else:
             probmut = np.random.rand()  
             if probmut <= args['pmut']:
-                if genome.reconcile:  
-                    Utils.performSPR(genome)    
+                if genome.reconcile:
+                    # choose between SPR, reroot, edge and dlt
+                    selection = engine.recparam.select_event(genome)
+                    if selection=='ROOT':
+                        Utils.reroot(genome)
+                    if selection=='DTL':
+                        genome.dtlrates.mutate()
+                    elif selection=="EDGE":
+                        genome.erates.mutate()
+                    else:
+                        Utils.performSPR(genome)
                 else:
                     spec = np.random.choice(spec_list)
                     Utils.permute_seq(genome, spec)
@@ -465,6 +481,13 @@ class GPolySolver(GenomeBase):
                     else:
                         t.get_common_ancestor(node.get_leaf_names()).add_feature(feat, node.get_feature(feat))
         self.tree = t
+
+
+    def get_tree_with_br(self):
+        score, tree = self.model.optimize_model(self.tree, expect_tree=True, forcelog=True)
+        if tree:
+            genome.update_tree(tree[0])
+        return self.tree
 
     @classmethod
     def setGeneMap(clc, val):

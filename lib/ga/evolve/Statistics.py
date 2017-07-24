@@ -100,8 +100,11 @@ class Statistics(object):
 
     def clear(self):
         """ Set all statistics to zero """
-        for k in self.internalDict.keys():
-            self.internalDict[k] = 0
+        for k,v in self.internalDict.items():
+            if isinstance(v, list):
+                self.internalDict[k] = []
+            else:
+                self.internalDict[k] = 0.0
 
     def items(self):
         """ Return a tuple (name, value) for all stored statistics """

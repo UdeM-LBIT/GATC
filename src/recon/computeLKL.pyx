@@ -263,11 +263,7 @@ cdef np.float_t [:, :, :] c_computeProb(rateDens, genetree, dict name2node, dict
         int e
         int e_discr
         int linked_s_node
-        int t0
-        int t1
-        int t00
-        int t01
-        int t02
+
         # list genelist = list(reversed(list(genetree.traverse("levelorder"))))
 
     for gnode in genetree.traverse("postorder"):
@@ -276,7 +272,6 @@ cdef np.float_t [:, :, :] c_computeProb(rateDens, genetree, dict name2node, dict
         gchild = [ch.ind for ch in gnode.get_children()]
         # print 'succcesss 1', gnode.is_leaf()
         if gnode.is_leaf():
-            t0 = time(NULL)
             linked_s_node = name2node[gnode.species]
 
             # gnode.dist is distance to parent
@@ -314,9 +309,6 @@ cdef np.float_t [:, :, :] c_computeProb(rateDens, genetree, dict name2node, dict
                         #print node_data[e], "\t\t", e_discr
                         #print prob_Se[gnode.ind, e, e_discr]
                         # compute prob_Ax ==> never executed
-            t1 = time(NULL)
-            print(gnode)
-            print("finished in %f"%((t1 - t0)))
         else:
             # for gnode ==> use up time and low time
             # start by finding the time slice and the epoch
@@ -326,14 +318,8 @@ cdef np.float_t [:, :, :] c_computeProb(rateDens, genetree, dict name2node, dict
             # print gnode.upSlice, gnode.upTime
             # print gnode.lowSlice, gnode.lowTime
             # print '##################'
-            t0 = time(NULL)
-
             while gls > gnode.upSlice or (gls==gnode.upSlice and glt <= gnode.upTime):
-                print '**********'
 
-                print(glt, gls)
-                print gnode
-                t00 = time(NULL)
                 for e in rankedge[gls]:
                     transtmp = 0.0
                     duptmp = 0.0
@@ -354,8 +340,6 @@ cdef np.float_t [:, :, :] c_computeProb(rateDens, genetree, dict name2node, dict
                             transtmp *= trate*1.0 / (len(rankedge[gls]) -1)
                         duptmp = prob_Se[gchild[0], e, glt-1]*prob_Se[gchild[1], e, glt-1]
                         prob_Ax[gnode.ind, e, glt] = 2*drate*duptmp + transtmp
-                t01 = time(NULL)
-                print "first loop took: ", (t01-t00)
                 for e in rankedge[gls]:
                     transtmp = 0.0
                     duptmp = 0.0
@@ -394,12 +378,8 @@ cdef np.float_t [:, :, :] c_computeProb(rateDens, genetree, dict name2node, dict
                         
                         #print '*** a(x,u)',zedge, zls, zlt, prob_Ax[gnode.ind, zedge, zlt], Qef[e, zedge, zlt, glt+1]
                         #print node_data[zedge]
-                t02 = time(NULL)
-                print "second loop took: ", (t02-t01)
                 glt += 1
                 if glt >= discrsize:
                     gls -= 1
                     glt -= discrsize        
-            t1 = time(NULL)
-            print "Node done in ", (t1- t0)
     return prob_Ax

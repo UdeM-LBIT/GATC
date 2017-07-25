@@ -473,16 +473,19 @@ class GPolySolver(GenomeBase):
         try:
             leaf_names = self.tree.get_child_at(0).get_leaf_names()
             if len(leaf_names) > 1:
-                outgroup = t.get_common_ancestor()
+                outgroup = t.get_common_ancestor(*leaf_names)
             else:
                 outgroup = t&leaf_names[0]
+            t.set_outgroup(outgroup)
+
         except:
             leaf_names = self.tree.get_child_at(1).get_leaf_names()
             if len(leaf_names) > 1:
-                outgroup = t.get_common_ancestor()
+                outgroup = t.get_common_ancestor(leaf_names)
             else:
                 outgroup = t&leaf_names[0]
-        t.set_outgroup(outgroup)
+            t.set_outgroup(outgroup)
+            
         for node in self.tree.traverse():
             for feat in node.features:
                 if feat not in ['dist','name']:

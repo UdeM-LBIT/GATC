@@ -469,10 +469,20 @@ class GPolySolver(GenomeBase):
         return skeleton
 
     def update_tree(self, t):
+        outgroup = None
         try:
-            t.set_outgroup(t.get_common_ancestor(self.tree.get_child_at(0).get_leaf_names()))
+            leaf_names = self.tree.get_child_at(0).get_leaf_names()
+            if len(leaf_names) > 1:
+                outgroup = t.get_common_ancestor()
+            else:
+                outgroup = t&leaf_names[0]
         except:
-            t.set_outgroup(t.get_common_ancestor(self.tree.get_child_at(1).get_leaf_names()))
+            leaf_names = self.tree.get_child_at(1).get_leaf_names()
+            if len(leaf_names) > 1:
+                outgroup = t.get_common_ancestor()
+            else:
+                outgroup = t&leaf_names[0]
+        t.set_outgroup(outgroup)
         for node in self.tree.traverse():
             for feat in node.features:
                 if feat not in ['dist','name']:

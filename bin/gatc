@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+import matplotlib.pyplot as plt
+import os
 from lib import *
 from argparse import ArgumentTypeError, ArgumentParser
 import re
@@ -18,6 +20,9 @@ from functools import partial
 import scipy.stats as ss
 import uuid
 import itertools
+
+if not os.environ.get('DISPLAY', ''):
+    plt.switch_backend('agg')
 
 raxmlBin = ["raxml"] + ["raxmlHPC"+ x for x in "|-SSE3|-PTHREADS|-PTHREADS-SSE3|-HYBRID|-HYBRID-SSE3".split('|')]
 expected_nuc = set(['N', 'A', 'T', 'C', 'G'])
@@ -679,7 +684,6 @@ if __name__ == '__main__':
         res = [best_ind for best_ind in ga.bestNIndividuals(args.nout) ]
 
         if args.plot_lkl:
-            import matplotlib.pyplot as plt
             #print 'BEST_IND',  BEST_IND
             #print 'AVG_IND',  AVG_IND
             #print 'WORST_IND',  WORST_IND

@@ -425,7 +425,14 @@ class GSimpleGA(object):
         return self.internalPop.bestFitness()
 
     def bestNIndividuals(self, nsize=1):
-        return [self.internalPop.bestFitness(x) for x in xrange(nsize)]
+        # in case the 
+        out = []
+        for x in xrange(nsize):
+            try:
+                out.append(self.internalPop.bestFitness(x))
+            except IndexError as e:
+                break 
+        return out
 
     def worstIndividual(self):
         """ Returns the population worst individual

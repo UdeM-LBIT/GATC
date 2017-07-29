@@ -48,11 +48,9 @@ def GTournamentSelector(population, **args):
 
     """
     choosen = None
-    should_minimize = population.minimax == Consts.minimaxType["minimize"]
-    minimax_operator = min if should_minimize else max
     poolSize = population.getParam("tournamentPool", Consts.CDefTournamentPoolSize)
     tournament_pool = [GRouletteWheel(population, **args) for i in xrange(poolSize)]
-    choosen = minimax_operator(tournament_pool, key=lambda ind: ind.fitness)
+    choosen = min(tournament_pool, key=lambda ind: ind.fitness)
     
     return choosen
 
@@ -65,10 +63,8 @@ def GTournamentSelectorAlternative(population, **args):
     """
     pool_size = population.getParam("tournamentPool", Consts.CDefTournamentPoolSize)
     len_pop = len(population)
-    should_minimize = population.minimax == Consts.minimaxType["minimize"]
-    minimax_operator = min if should_minimize else max
     tournament_pool = [population[random.randint(0, len_pop - 1)] for i in xrange(pool_size)]
-    choosen = minimax_operator(tournament_pool, key=lambda ind: ind.fitness)
+    choosen = min(tournament_pool, key=lambda ind: ind.fitness)
     
     return choosen
 
@@ -117,17 +113,10 @@ def GRouletteWheel_PrepareWheel(population):
             psum[index] = (index + 1) / float(len_pop)
     elif (pop_fitMax > 0 and pop_fitMin >= 0) or (pop_fitMax <= 0 and pop_fitMin < 0):
         population.sort()
-        if population.minimax == Consts.minimaxType["maximize"]:
-            psum[0] = population[0].fitness
-            for i in xrange(1, len_pop):
-                psum[i] = population[i].fitness + psum[i - 1]
-            for i in xrange(len_pop):
-                psum[i] /= float(psum[len_pop - 1])
-        else:
-            psum[0] = -population[0].fitness + pop_fitMax + pop_fitMin
-            for i in xrange(1, len_pop):
-                psum[i] = -population[i].fitness + pop_fitMax + pop_fitMin + psum[i - 1]
-            for i in xrange(len_pop):
-                psum[i] /= float(psum[len_pop - 1])
+        psum[0] = -population[0].fitness + pop_fitMax + pop_fitMin
+        for i in xrange(1, len_pop):
+            psum[i] = -population[i].fitness + pop_fitMax + pop_fitMin + psum[i - 1]
+        for i in xrange(len_pop):
+            psum[i] /= float(psum[len_pop - 1])
 
     return psum

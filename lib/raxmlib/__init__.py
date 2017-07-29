@@ -160,7 +160,7 @@ class LklModel():
         self.title  = title
         self.extra = extra_string 
         self.currLH = 0
-        self.wdir = os.path.join(os.path.abspath(os.getcwd()), '_raxmltmp')
+        self.wdir = os.path.join(os.path.abspath(os.getcwd()), '.tmp_'+self.title)
         if not os.path.exists(self.wdir):
             try:
                 os.makedirs(self.wdir)
@@ -171,8 +171,8 @@ class LklModel():
 
     def __del__(self):
         # release wdir garbage
-        #shutil.rmtree(self.wdir, ignore_errors=True)
-        get_rid_of(glob.glob("%s/RAxML*.%s*" % (self.wdir,self.title)))
+        shutil.rmtree(self.wdir, ignore_errors=True)
+        #get_rid_of(glob.glob("%s/RAxML*.%s*" % (self.wdir,self.title)))
 
     def _build_lkl_line(self, treefile, consel=False, forcelog=False):
         use_log = False
@@ -228,7 +228,9 @@ class LklModel():
         alpha = kwargs.get('alpha', 0.05)
         # get query tree position
         # best tree at second position by default
-        querypos = kwargs.get('querypos', 2)
+        accept = True
+        querypos = kwargs.get('querypos', 1)
+        compare_np = kwargs.get('compare_np', False)
         os.close(fd)
         trees = []
         for t in args:
@@ -238,8 +240,11 @@ class LklModel():
         cmdline, _ = self._build_lkl_line(treefile, consel=True)
         consel_output = consel(cmdline, self.title, ext=kwargs.get('ext',uuid.uuid4().hex[:5]), basedir=self.wdir)
         os.remove(treefile)
-        item_pos = [int(x) for x in consel_output['item']].index(querypos)
-        return all([x > alpha for x in consel_output['au']]) and abs(consel_output['np'][0] - consel_output['np'][item_pos]) < alpha
+        if compare_np:
+            item_pos = [int(x) for x in consel_output['item']].index(querypos)
+            accept = abs(consel_output['np'][0] - consel_output['np'][item_pos]) < alpha*2
+
+        return all([x > alpha for x in consel_output['au']]) and accept
     
     def compute_lik_test(self, besttree, tree, test="SH", alpha=0.05):
         """Compute sh test between two trees"""

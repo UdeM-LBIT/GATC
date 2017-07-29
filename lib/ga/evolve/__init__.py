@@ -23,7 +23,7 @@ if sys.version_info[:2] < Consts.CDefPythonRequire:
 
 del sys
 
-def logEnable(filename=Consts.CDefLogFile, level=Consts.CDefLogLevel):
+def logEnable(filename=Consts.CDefLogFile):
     """ Enable the log system for evolve
     :param filename: the log filename
     :param level: the debugging level
@@ -33,8 +33,8 @@ def logEnable(filename=Consts.CDefLogFile, level=Consts.CDefLogLevel):
 
     """
     import logging
-    logging.basicConfig(level=level,
+    logging.basicConfig(level=logging.DEBUG,
                         format='%(asctime)s [%(module)s:%(funcName)s:%(lineno)d] %(levelname)s %(message)s',
                         filename=filename,
-                        filemode='w')
+                        )
     logging.info("Log was enabled by user.")

@@ -8,12 +8,6 @@ to keep the population and the statistics.
 Default Parameters
 -------------------------------------------------------------
 
-*Minimax*
-
-    >>> Consts.minimaxType["maximize"]
-
-    Maximize the evaluation function
-
 *Scale Method*
 
     :func:`Scaling.LinearScaling`
@@ -128,7 +122,6 @@ class GPopulation(object):
             self.internalPopRaw = []
             self.popSize = genome.popSize
             self.sorted = False
-            self.minimax = genome.minimax
             self.scaleMethod = genome.scaleMethod
             self.rawSortMethod =  genome.rawSortMethod
             self.allSlots = [self.scaleMethod, self.rawSortMethod]
@@ -145,7 +138,6 @@ class GPopulation(object):
         self.internalPopRaw = []
         self.popSize = 0
         self.sorted = False
-        self.minimax = Consts.CDefPopMinimax
         self.scaleMethod = FunctionSlot("Scale Method")
         self.scaleMethod.set(Consts.CDefPopScale)
         self.rawSortMethod = FunctionSlot("Raw Sort Method")
@@ -179,31 +171,7 @@ class GPopulation(object):
     def setScaleMethod(self, fn):
         """Setting scale method for the GA"""
         self.scaleMethod.set(fn)
-
-
-    def getOrSetWeight(self, lklscaled=None):
-        # current value
-        weight = self.getParam('weight', None)
-        # if this value is not found
-        if not weight:
-            try:
-                costdict = self.getStatistics(1) 
-                ave_cost = costdict["rawMed"]
-                if not lklscaled:
-                    lkldict = self.getStatistics(0)
-                    ave_lkl = lkldict["rawMed"]
-                else:
-                    ave_lkl = np.median(lklscaled)
-                # get the closest power of 10 and take its inverse
-                ave_lkl = max(1, 10**(round(np.log10(ave_lkl)) -1))
-                ave_cost = max(1, 10**round(np.log10(ave_cost)))
-                weight = [1.0/ave_lkl, 1.0/ave_cost]
-            except Exception as e:
-                # fixed default value
-                weight = [0.001, 0.1]
-            self.setParams(weight=weight)
-        return weight
-    
+   
     def setRawSortMethod(self, fn):
         """Setting scale method for the GA"""
         self.rawSortMethod.set(fn)
@@ -230,22 +198,11 @@ class GPopulation(object):
         """
         self.multiProcessing = (flag, full_copy, max_processes)
 
-    def setMinimax(self, minimax):
-        """ Sets the population minimax
-
-        Example:
-         >>> pop.setMinimax(Consts.minimaxType["maximize"])
-
-        :param minimax: the minimax type
-
-        """
-        self.minimax = minimax
 
     def __repr__(self):
         """ Returns the string representation of the population """
         ret = "- GPopulation\n"
         ret += "\tPopulation Size:\t %d\n" % (self.popSize,)
-        ret += "\tMinimax Type:\t\t %s\n" % (Consts.minimaxType.keys()[Consts.minimaxType.values().index(self.minimax)].capitalize(),)
         for slot in self.allSlots:
             ret += "\t" + slot.__repr__()
         ret += "\n"
@@ -372,17 +329,40 @@ class GPopulation(object):
         """ Sort the population """
         if self.sorted:
             return
-        rev = (self.minimax == Consts.minimaxType["maximize"])
 
-        for it in self.rawSortMethod.applyFunctions(self, reverse=rev, score=raw_score):
+        for it in self.rawSortMethod.applyFunctions(self,  score=raw_score):
             pass
         
         # copy current order into rawSort
         self.internalPopRaw = self.internalPop[:]
         # now scale and sort by fitness
         self.scale()
-        self.internalPop.sort(cmp=Util.cmp_individual_fitness, reverse=rev)
+        self.internalPop.sort(cmp=Util.cmp_individual_fitness)
 
+        self.sorted = True
+
+
+    def moop_sort(self, sortedpop, raw_score=0):
+
+        self.internalPop = sortedpop[:]
+        for it in self.rawSortMethod.applyFunctions(self, score=raw_score):
+            pass
+        
+        # copy current order into rawSort
+        self.internalPopRaw = self.internalPop
+        # now scale and sort by fitness
+        self.internalPop = sortedpop[:]
+        fit_sum = 0
+        max_p = -1 
+        min_p = np.inf
+        for p in self.internalPop:
+            #print p.score, p.fitness
+            min_p = min(p.fitness, min_p)
+            max_p = max(p.fitness, max_p)
+            fit_sum += p.fitness
+        self.stats["fitMax"] = max_p
+        self.stats["fitMin"] = min_p
+        self.stats["fitAve"] = fit_sum / float(len(self.internalPop))
         self.sorted = True
 
 
@@ -397,7 +377,6 @@ class GPopulation(object):
 
     def create(self, **args):
         """ Clone the example genome to fill the population """
-        self.minimax = args["minimax"]
         # not defined
         if not self.internalPop:
             self.internalPop = [self.oneSelfGenome.clone() for i in xrange(self.popSize)]
@@ -524,7 +503,6 @@ class GPopulation(object):
 
         """
         pop.popSize = self.popSize
-        pop.minimax = self.minimax
         pop.scaleMethod = self.scaleMethod
         pop.internalParams = self.internalParams
         pop.multiProcessing = self.multiProcessing

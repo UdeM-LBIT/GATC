@@ -30,12 +30,6 @@ Default Parameters
 
    Default is 80 individuals
 
-*Minimax*
-
-   >>> Consts.minimaxType["maximize"]
-
-   Maximize the evaluation function
-
 *Selector (Selection Method)*
 
    :func:`Selectors.GRankSelector`
@@ -153,7 +147,6 @@ class GSimpleGA(object):
         self.pMutation = Consts.CDefGAMutationRate
         self.pCrossover = Consts.CDefGACrossoverRate
         self.nElitismReplacement = Consts.CDefGAElitismReplacement
-        self.minimax = Consts.CDefPopMinimax
         self.elitism = True
         self.recparam = None
         self.scaleparam = None
@@ -232,14 +225,12 @@ class GSimpleGA(object):
 
     def __repr__(self):
         """ The string representation of the GA Engine """
-        minimax_type = Consts.minimaxType.keys()[Consts.minimaxType.values().index(self.minimax)]
         ret = "- GSimpleGA\n"
         ret += "\tPopulation Size:\t %d\n" % self.internalPop.popSize
         ret += "\tGenerations:\t\t %d\n" % self.nGenerations
         ret += "\tCurrent Generation:\t %d\n" % self.currentGeneration
         ret += "\tMutation Rate:\t\t %.2f\n" % self.pMutation
         ret += "\tCrossover Rate:\t\t %.2f\n" % self.pCrossover
-        ret += "\tMinimax Type:\t\t %s\n" % minimax_type.capitalize()
         ret += "\tElitism:\t\t %s\n" % self.elitism
         ret += "\tElitism Replacement:\t %d\n" % self.nElitismReplacement
         for slot in self.allSlots:
@@ -365,23 +356,6 @@ class GSimpleGA(object):
         """
         return self.nGenerations
 
-    def getMinimax(self):
-        """ Gets the minimize/maximize mode
-
-        :rtype: the Consts.minimaxType type
-
-        """
-        return self.minimax
-
-    def setMinimax(self, mtype):
-        """ Sets the minimize/maximize mode, use Consts.minimaxType
-
-        :param mtype: the minimax mode, from Consts.minimaxType
-
-        """
-        if mtype not in Consts.minimaxType.values():
-            Util.raiseException("Minimax must be maximize or minimize", TypeError)
-        self.minimax = mtype
 
     def getCurrentGeneration(self):
         """ Gets the current generation
@@ -445,7 +419,7 @@ class GSimpleGA(object):
 
     def initialize(self):
         """ Initializes the GA Engine. Create and initialize population """
-        self.internalPop.create(minimax=self.minimax)
+        self.internalPop.create()
         self.internalPop.initialize(ga_engine=self)
         logging.debug("The GA Engine was initialized !")
 
@@ -521,64 +495,47 @@ class GSimpleGA(object):
         newPop.evaluate(ga_engine=self)
         # self.printTimeElapsed("Step")
 
-        if self.elitism:
+        if self.scaleparam._moop:
+            nextPop = Util.compNextGen(newPop.internalPop, self.internalPop.internalPop, len(self.internalPop))
+            newPop.moop_sort(nextPop)
+
+        elif self.elitism:
+            print "WTH"
             t = time()
             logging.debug("Doing elitism.")
-            if self.getMinimax() == Consts.minimaxType["maximize"]:
-                for i in xrange(self.nElitismReplacement):
-                    #re-evaluate before being sure this is the best
-                    #self.internalPop.bestRaw(i).evaluate()
-                    if self.internalPop.bestFitness(i).fitness > newPop.bestFitness(i).fitness:
-                        newPop[len(newPop) - 1 - i] = self.internalPop.bestFitness(i)
-                        # this force sorting again
-            elif self.getMinimax() == Consts.minimaxType["minimize"]:
-                for i in xrange(self.nElitismReplacement):
-                    # re-evaluate before being sure this is the best
-                    # self.internalPop.bestRaw(i).evaluate()
-                    # not need since score did not changed
-                    if self.internalPop.bestFitness(i).fitness < newPop.bestFitness(i).fitness:
-                        newPop[len(newPop) - 1 - i] = self.internalPop.bestFitness(i)
+            for i in xrange(self.nElitismReplacement):
+                # re-evaluate before being sure this is the best
+                # self.internalPop.bestRaw(i).evaluate()
+                # not need since score did not changed
+                if self.internalPop.bestFitness(i).fitness < newPop.bestFitness(i).fitness:
+                    newPop[len(newPop) - 1 - i] = self.internalPop.bestFitness(i)
             logging.debug("Elitism time %f" % (time() - t))
 
         elif self.getParam('fastconv', False):
             # lazyness overload
+            print "WTHHH"
             t = time()
             logging.debug("Running in fastconv mode.")  
-            # we are going to remove all transfer that are worst than the previous gen
-            # in other words replace all transfered that increase cost then likelihood
-            # transfer case
+            # we are going to remove SPR that increased overall cost
             lower_worst = max(1, int(math.log(len(newPop))))
 
-            if self.pHGT > 0:
-                # remove genome with worst cost and lkl compared to previous generation
-                # we look at fitness only, in order to not sort multiple times
-                if self.getMinimax() == Consts.minimaxType["maximize"]:
-                    for i in xrange(lower_worst):
-                        if self.internalPop.worstFitness(i).score[1] > newPop.worstFitness().score[1] and  self.internalPop.worstFitness(i).score[0] > newPop.worstFitness().score[0]:
-                                newPop[-1] = self.internalPop.worstFitness(i)
+            if self.recparam:
+                for i in xrange(lower_worst):
+                    if self.internalPop.worstFitness(i).score[1] < newPop.worstFitness().score[1] and  self.internalPop.worstFitness(i).score[0] < newPop.worstFitness().score[0]:
+                        newPop[-1] = self.internalPop.worstFitness(i)
 
-                elif self.getMinimax() == Consts.minimaxType["minimize"]:
-                    for i in xrange(lower_worst):
-                        if self.internalPop.worstFitness(i).score[1] < newPop.worstFitness().score[1] and  self.internalPop.worstFitness(i).score[0] < newPop.worstFitness().score[0]:
-                            newPop[-1] = self.internalPop.worstFitness(i)
-
-            # check the half worst population of current generation
-            # and bring them to replace the worst of next generation
+            # check the worst population of current generation
+            # and bring them to replace  of next generation
             else:
-                if self.getMinimax() == Consts.minimaxType["maximize"]:
-                    for i in xrange(lower_worst):
-                        if self.internalPop.worstRaw(i).score[0] > newPop.worstRaw().score[0]:
-                            newPop[-1] = self.internalPop.worstRaw(i)
-                elif self.getMinimax() == Consts.minimaxType["minimize"]:
-                    for i in xrange(lower_worst):
-                        if self.internalPop.worstRaw(i).score[0] < newPop.worstRaw().score[0]:
-                            newPop[-1] = self.internalPop.worstRaw(i)
+                for i in xrange(lower_worst):
+                    if self.internalPop.worstRaw(i).score[0] < newPop.worstRaw().score[0]:
+                        newPop[-1] = self.internalPop.worstRaw(i)
 
             logging.debug("FastConv time %f" % (time() - t))
 
 
         self.internalPop = newPop
-        self.internalPop.sort() #impotant
+        self.internalPop.sort() #important
 
         logging.debug("The generation %d was finished.", self.currentGeneration)
 
@@ -633,7 +590,6 @@ class GSimpleGA(object):
         """
 
         stopFlagCallback = False
-        stopFlagTerminationCriteria = []
 
         self.time_init = time()
         
@@ -641,11 +597,17 @@ class GSimpleGA(object):
         # self.printTimeElapsed("Initialize")
         self.internalPop.evaluate(ga_engine=self)
         # self.printTimeElapsed("Evaluate")
-        self.internalPop.sort()
+        if self.scaleparam._moop:
+            nextPop = Util.compNextGen([], self.internalPop.internalPop, len(self.internalPop))
+            self.internalPop.moop_sort(nextPop)
+        else:
+            self.internalPop.sort()
         # self.printTimeElapsed("Sort")
         logging.debug("Starting loop over evolutionary algorithm.")
         try:
             while True:
+                stopFlagTerminationCriteria = []
+
                 if not self.stepCallback.isEmpty():
                     for it in self.stepCallback.applyFunctions(self):
                         stopFlagCallback = it
@@ -657,7 +619,7 @@ class GSimpleGA(object):
                 if freq_stats:
                     if (self.currentGeneration % freq_stats == 0) or (self.getCurrentGeneration() == 0):
                         self.printStats()
-                        self.printTimeElapsed("Generations")
+                        self.printTimeElapsed("Generations %d [%d ind]"%(self.currentGeneration, len(self.internalPop)))
 
                 if any(stopFlagTerminationCriteria):
                     logging.debug("Evolution stopped by the Termination Criteria !")
@@ -665,13 +627,13 @@ class GSimpleGA(object):
                         print "\n\tEvolution stopped by Termination Criteria function !\n"
                         for _i, _v in enumerate(stopFlagTerminationCriteria):
                             if _v:
-                                print self.terminationCriteria.getFuncStr(_i)
+                                print(self.terminationCriteria.getFuncStr(_i))
                     break
 
                 if stopFlagCallback:
                     logging.debug("Evolution stopped by Step Callback function !")
                     if freq_stats:
-                        print "\n\tEvolution stopped by Step Callback function !\n"
+                        print("\n\tEvolution stopped by Step Callback function !\n")
                     break
 
                 if self.step():
@@ -680,11 +642,11 @@ class GSimpleGA(object):
         except KeyboardInterrupt:
             logging.debug("CTRL-C detected, finishing evolution.")
             if freq_stats:
-                print "\n\tA break was detected, you have interrupted the evolution !\n"
+                print("\n\tA break was detected, you have interrupted the evolution !\n")
 
         if freq_stats != 0:
             self.printStats()
-            self.printTimeElapsed("Generations")
+            self.printTimeElapsed("Generations %d [%d ind]"%(self.currentGeneration, len(self.internalPop)))
 
         return self.bestIndividual()
 

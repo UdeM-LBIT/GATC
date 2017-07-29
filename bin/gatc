@@ -1,8 +1,10 @@
 #!/usr/bin/env python
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt   
 import os
+if not os.environ.get('DISPLAY', ''):  
+    plt.switch_backend('agg')
 from lib import *
-from argparse import ArgumentTypeError, ArgumentParser
+from argparse import ArgumentTypeError, ArgumentParser, SUPPRESS
 import re
 import time
 from Bio import AlignIO
@@ -15,14 +17,11 @@ from lib.ga.evolve import Selectors
 from lib.ga.evolve import Statistics
 from lib.ga.evolve import Consts
 from distutils import spawn
-from heapq import heappop
 from functools import partial
 import scipy.stats as ss
 import uuid
 import itertools
-
-if not os.environ.get('DISPLAY', ''):
-    plt.switch_backend('agg')
+import logging
 
 raxmlBin = ["raxml"] + ["raxmlHPC"+ x for x in "|-SSE3|-PTHREADS|-PTHREADS-SSE3|-HYBRID|-HYBRID-SSE3".split('|')]
 expected_nuc = set(['N', 'A', 'T', 'C', 'G'])
@@ -31,6 +30,8 @@ BEST_IND, AVG_IND, WORST_IND, AVG_FIT = [], [], [], []
 
 
 VERSION = "1.0.0rc"
+DESC="GATC"
+
 class Output(object):
 
     def __init__(self, file=None):
@@ -55,26 +56,29 @@ class Output(object):
 
 class ScalingParams:
 
-    def __init__(self, weight=[], use_sigmoid=False, keepraw=False, parcim=False):
+    def __init__(self, weight=[], use_sigmoid=False, keepraw=True, parcim=False):
         self.weight = weight
-        self.use_sigmoid = use_sigmoid
-        self.parcim = parcim
-        # default keepraw values is True if weight is set
-        self.keepraw = True if (self.weight and len(self.weight) == 2) else keepraw
-        # if not parcimonie, keep raw lkl values
-        # and set weight to unit if not set
-        if not self.parcim:
-            self.keepraw = True
-            if not self.weight:
-                self.weight = [1.0, 1.0]
-
-    def get_scaling_func(self):
         if not(self.weight and len(self.weight) == 2):
             self.weight = []
-        scalemet = Scaling.WeightScaling
-        if self.use_sigmoid:
-            scalemet = Scaling.WeightSigmoidScaling
-        return partial(scalemet, weight=self.weight, keepraw=self.keepraw)
+        self.use_sigmoid = use_sigmoid
+        self.parcim = parcim
+        self._moop = False
+        # default keepraw values is True if weight is set
+        # if not parcimonie, keep raw lkl values
+        # and set weight to unit if not set
+        if not self.parcim and not self.weight:
+            self.weight = [1.0, 1.0]
+        elif self.parcim and not self.weight:
+            self._moop = True
+
+    def get_scaling_func(self):
+        if self.weight:
+            scalemet = Scaling.WeightScaling
+            if self.use_sigmoid:
+                scalemet = Scaling.WeightSigmoidScaling
+            return partial(scalemet, weight=self.weight, keepraw=self.keepraw)
+        elif self._moop:
+            return partial(Scaling.NoScaling)
 
 
 def change_leaf_name(tree, specmap):
@@ -125,8 +129,9 @@ def get_trees(treefile, specmap=None, correct=False, ignore_dup=False, maxrcost=
         allowed_gene_name = sorted(trees_list[0].get_leaf_names())
     for t in trees_list:
         if sorted(t.get_leaf_names()) != allowed_gene_name:
-            print t.get_leaf_names()
-            print allowed_gene_name
+            logging.debug("A tree does not share the same leafset with the other ones.")
+            logging.debug(t.get_leaf_names())
+            logging.debug(allowed_gene_name)
             raise ValueError("Trees should all have the same leafset")
     return trees_list
 
@@ -171,7 +176,7 @@ def perform_perm(treelist, raxmlmod, specmap, treelimit=1, timelimit=None):
 
 def evolve_ga(treelist, raxmlmod, specmap, ngen, popsize, freqstat, recparam, dtl, edgerates, timelimit=None,
               step=False, verbose=False, termcrit=None, elitism=None, mutrate=0, crossrate=0, parallel=None,
-              fastconv=False, sclparam=None, selector=None):
+              fastconv=False, sclparam=None, selector=None, logfile=Consts.CDefLogFile):
 
     GPolySolver.setGeneMap(specmap)
     GPolySolver.setReconcile(recparam)
@@ -188,7 +193,6 @@ def evolve_ga(treelist, raxmlmod, specmap, ngen, popsize, freqstat, recparam, dt
     ga = GSimpleGA.GSimpleGA(gpop)
     # the termination criteria
 
-    # ga.setMinimax(0)
     # set to 1 to maximize instead
     if selector:
         # switch selector
@@ -229,7 +233,8 @@ def evolve_ga(treelist, raxmlmod, specmap, ngen, popsize, freqstat, recparam, dt
                               max_processes=parallel)
 
     if verbose:
-        evolve.logEnable()
+        evolve.logEnable(logfile)
+
     if step:
         ga.stepCallback.set(partial(stepcallback, verbose))
 
@@ -257,6 +262,18 @@ def randomly_split(gpop, selection):
     return part1, part2
 
 
+def is_outlier(points, thresh=3.5):
+    if len(points.shape) == 1:
+        points = points[:,None]
+    median = np.median(points, axis=0)
+    diff = np.sum((points - median)**2, axis=-1)
+    diff = np.sqrt(diff)
+    med_abs_deviation = np.median(diff)
+
+    modified_z_score = 0.6745 * diff / med_abs_deviation
+
+    return modified_z_score > thresh
+
 def terminate_crit_fc(iloop, thresh, ga_engine):
     gpop = ga_engine.getPopulation()
     popsize = gpop.popSize
@@ -264,11 +281,18 @@ def terminate_crit_fc(iloop, thresh, ga_engine):
     acc = 0
     for i in xrange(iloop):
         part1, part2 = randomly_split(gpop, selection)
-        corr = ss.pearsonr([x.fitness for x in part1],
-                           [x.fitness for x in part2])
-        if abs(corr[0]) > thresh:
+        res1 = is_outlier(part1, thresh)
+        res2 = is_outlier(part2, thresh)
+
+        corr = jaccard(set1, set2)
+        if corr > thresh:
             acc += 1
     return acc >= iloop - 1
+
+def jaccard(set1, set2):
+    m11 = np.count_nonzero(np.logical_and(set1, set2))
+    mxx = np.count_nonzero(np.logical_xor(set1, set2))
+    return (m11+0.0) / (m11 + mxx)
 
 
 def terminate_crit_wc(iloop, thresh, ga_engine):
@@ -304,7 +328,7 @@ def terminate_crit_au_test(known_best, alpha, ga_engine):
     curtree = best_ind.tree
     raxmlmod = best_ind.model
     success = raxmlmod.compute_consel_test(
-        known_best, curtree, worst_ind.tree, alpha=alpha, querypos=2)
+        known_best, curtree, worst_ind.tree, alpha=alpha, querypos=1, compare_np=True)
     return success
 
 
@@ -329,11 +353,7 @@ def terminate_crit_lkl(bestRawScore, ga_engine):
 
     """
     ind = ga_engine.bestIndividual()
-
-    if ga_engine.getMinimax() == Consts.minimaxType["maximize"]:
-        return round(bestRawScore) <= round(ind.score[0])
-    else:
-        return round(bestRawScore) >= round(ind.score[0])
+    return round(bestRawScore) >= round(ind.score[0])
 
 
 def stepcallback(verbose, ga_engine):
@@ -346,15 +366,13 @@ def stepcallback(verbose, ga_engine):
     AVG_IND.append(stat['rawAve'])
     AVG_FIT.append(stat['fitAve'])
     if verbose:
-        print("\nCurrent generation : %d" % ga_engine.currentGeneration)
-        print("Population size : %d" % len(ga_engine.internalPop))
+        logging.debug("\nCurrent generation : %d" % ga_engine.currentGeneration)
+        logging.debug("Population size : %d" % len(ga_engine.internalPop))
         for i, p in enumerate(ga_engine.internalPop):
-            print "Ind %d" % i,  p.score, p.fitness
-            # print p.tree
-            print '------------------------------'
-        print("Best individual score : %s" %
+            logging.debug("Ind %d | seq: %f, rec: %f ==> fit: %f" % (i,  p.score[0], p.score[1], p.fitness))
+        logging.debug("Best individual score : %s" %
               ", ".join(["%.2f" % x for x in BEST_IND[-1]]))
-        print("Worst individual score : %s" %
+        logging.debug("Worst individual score : %s" %
               ", ".join(["%.2f" % x for x in WORST_IND[-1]]))
       
     return False
@@ -470,8 +488,7 @@ if __name__ == '__main__':
                        help="Frequency of report (each freqrep) generations")
     galgo.add_argument('--mutrate', type=float01,
                        default=0.5, help="Mutation rate")
-    galgo.add_argument('--fastconv', action="store_true",
-                       help="Set the ga engine in accelerated mode, where each generation divergence is increased. Can rapidly be stuck in a local optimum")
+    galgo.add_argument('--fastconv', action="store_true", help=SUPPRESS)
     galgo.add_argument('--crossrate', type=float01,
                        default=0.8, help="Crossover rate")
     galgo.add_argument('--elitism', type=intOrFloat01, const=5, nargs='?',
@@ -489,9 +506,10 @@ if __name__ == '__main__':
     galgo.add_argument(
         '--sprconstr', help="Constraints for the SPR moves given the species tree, *** Not implemented")
     galgo.add_argument('--use_weight', metavar=('aln', 'recon'), dest='weight', type=float, nargs=2,
-                       help="Use weight values for sequence likelihood and reconciliation likelihood when computing fitness. Weight will be guessed in parcimonie reconciliation and unit values will be used for likelihood.")
-    galgo.add_argument('--rawlkl', action="store_true", dest="keepraw",
-                       help="Keep raw likelihood values, to make it comparable across generation. This parameter is irrelevant if you provided your own weights. In the other case, best likelihood of the generation will be subtracted from all likelihood score.")
+                       help="Use weight values for sequence likelihood and reconciliation likelihood when computing fitness. The MOOP framework will be used for parcimonie reconciliation if not provided, while and unit values will be used for likelihood.")
+    galgo.add_argument('--minscale', action="store_false", dest="keepraw", help=SUPPRESS)
+    galgo.add_argument('--runid', default="", help=SUPPRESS)
+
     galgo.add_argument('--use_sigmoid', action="store_true",
                        help="Use sigmoid function with the provided weight. Sigmoid will scale both function to 0-1.")
     galgo.add_argument('--norec', dest="enablerec", action="store_false",
@@ -612,7 +630,7 @@ if __name__ == '__main__':
         if (args.rectype == 'lkl'):
             reestimate = True
         raxmlmod = LklModel(aln, btype, model, raxmleps, extra_string=args.raxmlextra,
-                            reestimate=reestimate, title=uuid.uuid4().hex[:6])
+                            reestimate=reestimate, title=args.runid+uuid.uuid4().hex[:6])
     else:
         if args.crit == 'AU':
             raise ArgumentError("AU stop criterion not available without raxml binaries")
@@ -630,9 +648,9 @@ if __name__ == '__main__':
     else:
         # stopping criterion management
         step = False
+        besttree = args.mltree
         if args.crit or args.verbose or args.plot_lkl:
             step = True
-        besttree = args.mltree
         if args.crit == 'AU':
             btype, status = check_binaries(['consel'])
             if not status:
@@ -678,15 +696,16 @@ if __name__ == '__main__':
                        args.popsize, args.freqrep, recparam, init_dtl_params, init_edge_params, 
                        timelimit=args.timelim, step=step, verbose=args.verbose, parallel=args.parallel,
                        termcrit=stopping.get(args.crit, None), mutrate=args.mutrate, elitism=args.elitism,
-                       crossrate=args.crossrate, fastconv=args.fastconv, sclparam=scalparam, selector=selectors[args.selector])
+                       crossrate=args.crossrate, fastconv=args.fastconv, sclparam=scalparam, selector=selectors[args.selector], logfile=args.output+"_ga.log")
 
 
         res = [best_ind for best_ind in ga.bestNIndividuals(args.nout) ]
 
         if args.plot_lkl:
-            #print 'BEST_IND',  BEST_IND
-            #print 'AVG_IND',  AVG_IND
-            #print 'WORST_IND',  WORST_IND
+            logging.debug("\n Evolution end")
+            logging.debug('BEST_IND: %s'%", ".join([str(x) for x in BEST_IND]))
+            logging.debug('AVG_IND: %s'%", ".join([str(x) for x in AVG_IND]))
+            logging.debug('WORST_IND: %s'%", ".join([str(x) for x in WORST_IND]))
             BEST_IND = np.array(BEST_IND)
             AVG_IND = np.array(AVG_IND)
             WORST_IND = np.array(WORST_IND)

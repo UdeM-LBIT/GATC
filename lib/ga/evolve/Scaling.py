@@ -52,7 +52,10 @@ def LinearScaling(pop, sp=0):
 def NoScaling(pop):
     """Fitness is raw score"""
     for i, p in enumerate(pop):
-        pop[i].fitness = sum(p.score)
+        if pop[i].fitness:
+            pass
+        else:
+            pop[i].fitness = sum(p.score)
 
 
 def SigmaTruncScaling(pop, sp=0):
@@ -144,7 +147,8 @@ def sigmoid(x, sfunc='tanh'):
 
 
 def LklCostScaling(pop):
-    """This should not be used"""
+    """deprecated function
+    do not use as behaviour is weird"""
     stat = pop.getStatistics()
     lkldict = stat.getRawScore(0)
     costdict = stat.getRawScore(1) 
@@ -155,34 +159,30 @@ def LklCostScaling(pop):
         p.fitness =  normalized_lklcost + p.score[1]
 
 
-def __scaleLKLToZero(pop, keepraw=True):
+def __scaleScoreToZero(pop, keepraw=True):
     stat = pop.getStatistics()
     lkldict = stat.getRawScore(0)
+    costdict = stat.getRawScore(1)
     if keepraw:
+        min_rec = 0
         min_lkl = 0
     else:
         min_lkl =  lkldict["rawMin"]
-    lklscaled_vec = []
+        min_rec =  costdict["rawMin"]
     for p in pop:
-        x =  p.score[0] - min_lkl
-        lklscaled_vec.append(x)
-        p.setParams(lklscaled=x) # should be the same if keepraw
-    return lklscaled_vec
+        x = p.score[0] - min_lkl
+        y = p.score[1] - min_rec
+        p.setParams(lklscaled=x, costscaled=y) # should be the same if keepraw    
 
 
 def WeightSigmoidScaling(pop, weight=[], keepraw=True):
-    
-    lklscaled = __scaleLKLToZero(pop, keepraw)    
-    if not weight:
-        weight =  pop.getOrSetWeight(lklscaled)
+    __scaleScoreToZero(pop, keepraw)    
     for p in pop:
-        p.fitness = sigmoid(weight[0]*p.getParam('lklscaled'), 'exp') + sigmoid(weight[1]*p.score[1], 'exp')
+        p.fitness = sigmoid(weight[0]*p.getParam('lklscaled'), 'exp') + sigmoid(weight[1]*p.getParam('costscaled'), 'exp')
 
 
 def WeightScaling(pop, weight=[], keepraw=True):
     # fix the weight for all generation
-    lklscaled = __scaleLKLToZero(pop, keepraw)
-    if not weight:
-        weight =  pop.getOrSetWeight(lklscaled)
+    __scaleScoreToZero(pop, keepraw)    
     for p in pop:
-        p.fitness = np.dot(weight, [p.getParam('lklscaled'), p.score[1]])
+        p.fitness = np.dot(weight, [p.getParam('lklscaled'), p.getParam('costscaled')])

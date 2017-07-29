@@ -71,6 +71,7 @@ class GenomeBase(object):
         """
         self.internalParams.update(args)
 
+
     def getParam(self, key, nvl=None):
         """ Gets an internal parameter
 

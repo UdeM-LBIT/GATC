@@ -231,9 +231,7 @@ class Utils:
     @staticmethod
     def get_candtransfer_branches(genome):
 
-        candlist = []
-        for child in genome.tree.get_children():
-            candlist.extend(child.get_descendants())
+        candlist = genome.tree.get_descendants()
         cand =  random.choice(candlist)
         incomp_cand = random.choice(list(cand.get_incomparable_list()))
         return (cand.up, cand), (incomp_cand.up, incomp_cand)
@@ -259,15 +257,30 @@ class Utils:
         return res, hmap
 
 
+    @staticmethod    
+    def graftTreeAt(subtree, node):
+        if not node.edge_exist(node.up):
+            raise ValueError("Edge not found")
+        else:
+            nodeup = node.up
+            node.detach()
+            subtree.detach()
+            newNode = TreeClass()  
+            newNode.add_child(subtree)
+            newNode.add_child(node)
+            if nodeup:
+                nodeup.add_child(newNode)
+            return nodeup.get_tree_root()
+
     @staticmethod
     def no_recon_crossover(gdad, gmom):
         # we are going to  assume that this is done ramdomly
         gchild1 =  gdad.clone()
         gchild2 =  gmom.clone()
         tmp1 =  gchild1.tree.copy()
-        tmp2 =  ghild2.tree.copy()
+        tmp2 =  gchild2.tree.copy()
         # select a random internal branch and swap topology with the one of the second parent
-        internal_node = gchild1.tree.get_tree_root().get_internal_node()
+        internal_node = tmp1.get_tree_root().get_internal_node()
         hmap = {}
         in_prob = []
         for inode in internal_node:
@@ -276,11 +289,18 @@ class Utils:
         in_prob = np.array(in_prob, dtype='float')
         in_prob = in_prob/np.sum(in_prob)
         subtree1 = np.random.choice(internal_node,  p=in_prob)
-        tmp2.prune(subtree1.get_leaf_names())
-        subtree1.replace_by(tmp2)
-        
+        subtree1.detach()
+        lset1 = subtree1.get_leaf_names()
+        for l in gchild2.tree:
+            if l.name in lset1:
+                l.delete()
+        gchild2.tree.delete_single_child_internal()
+        selected_node = np.random.choice([x for x in gchild2.tree.traverse()])
+        Utils.graftTreeAt(subtree1, selected_node)
+        gchild2.tree.delete_single_child_internal()
+
         # same as above but for second tree
-        internal_node = gchild2.tree.get_tree_root().get_internal_node()
+        internal_node = tmp1.get_tree_root().get_internal_node()
         hmap = {}
         in_prob = []
         for inode in internal_node:
@@ -288,10 +308,17 @@ class Utils:
             in_prob.append(h)
         in_prob = np.array(in_prob, dtype='float')
         in_prob = in_prob/np.sum(in_prob)
+        subtree2 = np.random.choice(internal_node,  p=in_prob)
+        subtree2.detach()
+        lset2 = subtree2.get_leaf_names()
+        for l in gchild1.tree:
+            if l.name in lset2:
+                l.delete()
+        gchild1.tree.delete_single_child_internal()
+        selected_node = np.random.choice([x for x in gchild1.tree.traverse()])
+        Utils.graftTreeAt(subtree2, selected_node)
+        gchild1.tree.delete_single_child_internal()
 
-        subtree2 = np.random.choice(internal_node, p=in_prob)
-        tmp1.prune(subtree2.get_leaf_names())
-        subtree2.replace_by(tmp1)
         return gchild1, gchild2
 
 
@@ -554,5 +581,11 @@ class GPolySolver(GenomeBase):
     
     def __eq__(self, other):
         """Comparison of GenomeBase instance"""
+        same_score = False
+        if self.score and other.score:
+            if isinstance(self.score, list) and isinstance(other.score, list) and len(self.score) == len(other.score):
+                same_score = all([self.score[i]==other.score[i] for i in xrange(self.score)])
+            else:
+                same_score = (self.score == other.score)
         rf = self.tree.robinson_foulds(other.tree)
-        return rf[0] == 0 and (self.model == other.model)
+        return rf[0] == 0 and (self.model == other.model) and same_score 

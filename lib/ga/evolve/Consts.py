@@ -20,14 +20,6 @@ General constants
 
     Default log level.
 
-.. attribute:: minimaxType
-
-    The Min/Max type, maximize or minimize the evaluation function.
-
-    Example:
-        >>> minmax = Consts.minimaxType["minimize"]
-        >>> minmax = Consts.minimaxType["maximize"]
-
 .. attribute:: CDefESCKey
 
     The ESC key ASCII code. Used to start Interactive Mode.
@@ -97,12 +89,6 @@ Scaling scheme constants (:mod:`Scaling`)
 Population constants (:class:`GPopulation.GPopulation`)
 ----------------------------------------------------------------------------
 
-    Default sort type parameter.
-
-.. attribute:: CDefPopMinimax
-
-    Default min/max parameter.
-
 .. attribute:: CDefPopScale
 
     Default scaling scheme.
@@ -131,18 +117,6 @@ GA Engine constants (:class:`GSimpleGA.GSimpleGA`)
 
     Default selector method.
 
-CSV File DB Adapter Constants (:class:`DBAdapters.DBFileCSV`)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. attribute:: CDefCSVFileName
-
-    The default CSV filename to dump statistics.
-
-.. attribute:: CDefCSVFileStatsGenFreq
-
-    Default generational frequency for dump statistics.
-
-
 """
 import Scaling
 import Selectors
@@ -154,13 +128,7 @@ CDefPythonRequire = (2, 5)
 
 # Logging system
 CDefLogFile = "evolve.log"
-CDefLogLevel = logging.DEBUG
 # Optimization type
-# - Minimize or Maximize the Evaluator Function
-minimaxType = {
-                "minimize": 0,
-                "maximize": 1
-            }
 
 CDefESCKey = 27
 
@@ -187,7 +155,6 @@ CDefScaleBoltzFactor = 0.05
 CDefScaleBoltzStart = 40.0
 
 # - Population Defaults
-CDefPopMinimax = minimaxType["minimize"]
 CDefPopScale = Scaling.NoScaling
 CDefRawPopSort = Util.RawSorting
 

@@ -13,6 +13,54 @@ from math import sqrt as math_sqrt
 import logging
 import Consts
 
+def compNextGen(newPop, oldPop, requiredSize):
+    Pstar = list(newPop + oldPop)
+    Waves = []
+    prevlen = len(Pstar)
+    wave_ind = 1
+    dranklist = __computeDominanceRank(Pstar)
+
+    while(True):
+        wave_i = []
+        keeplist = []
+        for i, p in enumerate(Pstar):
+            if dranklist[i]==0:
+                p.fitness = wave_ind
+                wave_i.append(p)
+            else:
+                keeplist.append(p)
+        if len(wave_i) == 0:
+            break
+        Waves.extend(wave_i)
+        Pstar = keeplist
+        
+        newlen = len(Pstar)
+        assert(prevlen > newlen) , "Wrong"
+        newlen = prevlen
+        
+        dranklist = __computeDominanceRank(Pstar)
+        wave_ind += 1
+    
+    for i, p in enumerate(Pstar):
+        p.fitness = wave_ind + dranklist[i]
+        Waves.append(p)
+
+    Waves.sort(key=lambda x: x.score[0])
+    Waves.sort(cmp=cmp_individual_fitness)
+
+    nextPop = Waves[:requiredSize]
+    return nextPop
+
+def __computeDominanceRank(pop):
+    dranklist = []
+    for i, pi in enumerate(pop):
+        drank = 0
+        for pj in pop:
+            if (pj.score[0] < pi.score[0]) and (pj.score[1] < pi.score[1]):
+                drank += 1
+        dranklist.append(drank)
+    return dranklist
+
 
 def randomFlipCoin(p):
     """Returns True with the *p* probability. If *p* is 1, the

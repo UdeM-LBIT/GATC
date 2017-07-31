@@ -527,7 +527,7 @@ if __name__ == '__main__':
                        '1.0f', '1.0f'], help="Edge rate variation parameter under a iid gamma")
     recon.add_argument('--discrsize', type=int, default=10,
                        help="Interval discretisation size for the species tree")
-    recon.add_argument('--eventselector', type=int, nargs=4, metavar=("spr", "reroot", "dtl", "edge"), default=[0.5, 0, 0.3, 0.2],
+    recon.add_argument('--eventselector', type=int, nargs=4, metavar=("spr", "reroot", "dtl", "edge"), default=[0.4, 0.2, 0.2, 0.2],
                        help="Probability of selection for the following mutation: SPR, REROOT, DTL, EDGE. DTL and EDGE are set to zero when using parcimonie")
     recon.add_argument('--stemlen', type=float01, default=1.0,
                        help="Stem length for the species tree")

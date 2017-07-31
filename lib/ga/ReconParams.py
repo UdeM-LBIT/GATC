@@ -116,7 +116,7 @@ class ReconParams(object):
     """Little class to keep
     transfer parameter"""
     EVENT_LIST = ["SPR", "ROOT", "DTL", "EDGE"]
-    def __init__(self, sptree, gtreesize, discrsize=10, parcim=False, stemlen=1.0, event_selector=[0.5, 0, 0.2, 0.3]):
+    def __init__(self, sptree, gtreesize, discrsize=10, parcim=False, stemlen=1.0, event_selector=[0.4, 0.2, 0.2, 0.2]):
         self.sptree = TreeClass(sptree)
         self.gtreesize = gtreesize
         self.discrsize =  discrsize
@@ -142,7 +142,7 @@ class ReconParams(object):
         if not genome.erates.is_mutable():
             self.default_event_selector[3]=0.0
         self.default_event_selector = self._fixed_event_list()
-        choice = np.random.choice(ReconParams.EVENT_LIST,1, p=self.default_event_selector)
+        choice = np.random.choice(ReconParams.EVENT_LIST, 1, p=self.default_event_selector)
         return choice
 
     def _spectree_preprocess(self):

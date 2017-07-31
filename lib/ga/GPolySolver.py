@@ -248,11 +248,11 @@ class Utils:
 
     @staticmethod
     def compute_height(node, hmap={}):
-        res = 0
+        res = 1
         if node.is_leaf():
-            res = 0
+            res = 1
         else:
-            res = 1 + max([hmap.get(x, compute_height(x, hmap)[0]) for x in node.get_children()])
+            res = 1 + max([hmap.get(x, Utils.compute_height(x, hmap)[0]) for x in node.get_children()])
         hmap[node] = res
         return res, hmap
 
@@ -270,6 +270,8 @@ class Utils:
             newNode.add_child(node)
             if nodeup:
                 nodeup.add_child(newNode)
+            else:
+                nodeup = newNode
             return nodeup.get_tree_root()
 
     @staticmethod
@@ -280,45 +282,46 @@ class Utils:
         tmp1 =  gchild1.tree.copy()
         tmp2 =  gchild2.tree.copy()
         # select a random internal branch and swap topology with the one of the second parent
-        internal_node = tmp1.get_tree_root().get_internal_node()
-        hmap = {}
-        in_prob = []
-        for inode in internal_node:
-            h, hmap = Utils.compute_height(inode, hmap)
-            in_prob.append(h)
-        in_prob = np.array(in_prob, dtype='float')
-        in_prob = in_prob/np.sum(in_prob)
-        subtree1 = np.random.choice(internal_node,  p=in_prob)
-        subtree1.detach()
+        internal_node = tmp1.get_tree_root().get_descendants()
+        #hmap = {}
+        #in_prob = []
+        #for inode in internal_node:
+        #    h, hmap = Utils.compute_height(inode, hmap)
+        #    in_prob.append(h)
+        #in_prob = np.array(in_prob, dtype='float')
+        #in_prob = in_prob/np.sum(in_prob)
+        subtree1 = np.random.choice(internal_node)#,  p=in_prob)
         lset1 = subtree1.get_leaf_names()
         for l in gchild2.tree:
             if l.name in lset1:
                 l.delete()
-        gchild2.tree.delete_single_child_internal()
+        gchild2.tree.delete_single_child_internal(enable_root=True)
         selected_node = np.random.choice([x for x in gchild2.tree.traverse()])
-        Utils.graftTreeAt(subtree1, selected_node)
-        gchild2.tree.delete_single_child_internal()
+            
+        gchild2.tree = Utils.graftTreeAt(subtree1, selected_node)
+        gchild2.tree.delete_single_child_internal(enable_root=True)
+        assert len(gchild1.tree) == len(gchild2.tree) == len(gdad.tree), "NOOOOOOOOOOOOO"
 
         # same as above but for second tree
-        internal_node = tmp2.get_tree_root().get_internal_node()
-        hmap = {}
-        in_prob = []
-        for inode in internal_node:
-            h, hmap = Utils.compute_height(inode, hmap)
-            in_prob.append(h)
-        in_prob = np.array(in_prob, dtype='float')
-        in_prob = in_prob/np.sum(in_prob)
-        subtree2 = np.random.choice(internal_node,  p=in_prob)
-        subtree2.detach()
+        internal_node = tmp2.get_tree_root().get_descendants()#get_internal_node()
+        #hmap = {}
+        #in_prob = []
+        #for inode in internal_node:
+        #    h, hmap = Utils.compute_height(inode, hmap)
+        #    in_prob.append(h)
+        #in_prob = np.array(in_prob, dtype='float')
+        #in_prob = in_prob/np.sum(in_prob)
+        subtree2 = np.random.choice(internal_node)#,  p=in_prob)
         lset2 = subtree2.get_leaf_names()
         for l in gchild1.tree:
             if l.name in lset2:
                 l.delete()
-        gchild1.tree.delete_single_child_internal()
+        gchild1.tree.delete_single_child_internal(enable_root=True)
         selected_node = np.random.choice([x for x in gchild1.tree.traverse()])
-        Utils.graftTreeAt(subtree2, selected_node)
-        gchild1.tree.delete_single_child_internal()
+        gchild1.tree = Utils.graftTreeAt(subtree2, selected_node)
 
+        gchild1.tree.delete_single_child_internal(enable_root=True)
+        assert len(gchild1.tree) == len(gchild2.tree) == len(gdad.tree), "NOOOOOOOOOOOOO"
         return gchild1, gchild2
 
 
@@ -352,9 +355,9 @@ class Utils:
     def crossover(obj, **args):
 
         if args['mom'].reconcile:
-            return Utils.cost_preserve_crossover(args['dad'], args['mom'])
-        else:
             return Utils.no_recon_crossover(args['dad'], args['mom'])
+        else:
+            return Utils.cost_preserve_crossover(args['dad'], args['mom'])
 
 
     @staticmethod
@@ -441,7 +444,7 @@ class Utils:
             print("Evaluation failed")
             print len(scores), ' <==score vs treelist===> ', len(treelist)
             print scores
-            raise ValueError("Something went wrong")
+            raise ValueError("Something went wrong, see ==> %s"%raxmlmodel.title)
 
         return [-x for x in scores]
 

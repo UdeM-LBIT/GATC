@@ -1,8 +1,16 @@
 from collections import Hashable as hashable
 from functools import partial
 import shelve
+import os
 
-filename = "memorize"
+cur_dir = ".memorize/"
+try :
+	if not os.path.exists(cur_dir):
+		os.makedirs(cur_dir)
+except:
+	cur_dir = ""
+filename = os.path.join(cur_dir, "memo")
+
 class memorize(object):
 	"""Cache function output when it's called and return it
 	later when the same function is called with the same input,

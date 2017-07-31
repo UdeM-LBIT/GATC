@@ -207,7 +207,6 @@ class LklModel():
         else:
             gtree.write(outfile=treefile)
 
-
         cmdline, use_log = self._build_lkl_line(treefile, forcelog=args.get('forcelog', False))
         self.currLH, best_trees = calculate_likelihood(cmdline, self.title, ext=args.get("ext", uuid.uuid4().hex[:5]), basedir=self.wdir, size=size, log=use_log)
         #print treefile

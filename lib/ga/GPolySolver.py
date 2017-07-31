@@ -300,7 +300,7 @@ class Utils:
         gchild2.tree.delete_single_child_internal()
 
         # same as above but for second tree
-        internal_node = tmp1.get_tree_root().get_internal_node()
+        internal_node = tmp2.get_tree_root().get_internal_node()
         hmap = {}
         in_prob = []
         for inode in internal_node:

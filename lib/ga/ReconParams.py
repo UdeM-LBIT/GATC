@@ -174,7 +174,8 @@ class ReconParams(object):
                 return TreeUtils.computeDTLScore(gind.tree, self.sptree, dtlparams.getDup(), dtlparams.getTrans(), dtlparams.getLoss())
             else:
                 lcamap = TreeUtils.lcaMapping(gind.tree, self.sptree)
-                return TreeUtils.computeDLScore(gind.tree, lcamap, dtlparams.getDup(), dtlparams.getLoss())
+                score = TreeUtils.computeDLScore(gind.tree, lcamap, dtlparams.getDup(), dtlparams.getLoss()) 
+                return sum(score)
         else:
             k = 1.0
             theta = 1.0

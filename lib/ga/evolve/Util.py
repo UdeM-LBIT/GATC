@@ -45,7 +45,7 @@ def compNextGen(newPop, oldPop, requiredSize):
         p.fitness = wave_ind + dranklist[i]
         Waves.append(p)
 
-    Waves.sort(key=lambda x: x.score[0])
+    Waves.sort(key=lambda x: x.score[-1])
     Waves.sort(cmp=cmp_individual_fitness)
 
     nextPop = Waves[:requiredSize]

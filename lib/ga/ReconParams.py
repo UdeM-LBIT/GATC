@@ -169,6 +169,7 @@ class ReconParams(object):
         #k = (mu/sigma)**2
         #theta = (sigma**2)/mu
         dtlparams = gind.dtlrates
+        gind.set_species()
         if self.parcim:
             if dtlparams.hastrans():
                 return TreeUtils.computeDTLScore(gind.tree, self.sptree, dtlparams.getDup(), dtlparams.getTrans(), dtlparams.getLoss())
@@ -189,7 +190,7 @@ class ReconParams(object):
             nodeLimitter(gind.tree, self.discrsize, self.data['leafslice'])
             prob_Ax = computeProb(ratedens, gind.tree, self.sptree.name2node, self.data['slicelist'], self.data['node_d'], self.discrsize, self.stemlen, dtlparams.getDup(), dtlparams.getTrans(), Qef)
             val = np.asarray(prob_Ax)[gind.tree.ind, self.sptree.edge_i, self.discrsize-1]
-            print val, -np.log(val)
+            #print val, -np.log(val)
             return -np.log(val)
 
 

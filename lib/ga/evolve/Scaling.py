@@ -55,7 +55,7 @@ def NoScaling(pop):
         if pop[i].fitness:
             pass
         else:
-            pop[i].fitness = sum(p.score)
+            pop[i].fitness = sum(pop[i].score)
 
 
 def SigmaTruncScaling(pop, sp=0):

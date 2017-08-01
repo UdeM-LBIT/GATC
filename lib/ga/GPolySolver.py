@@ -452,6 +452,7 @@ class Utils:
 class GPolySolver(GenomeBase):
     
     gmap = {}
+    reversemap = {}
     reconcile = True
     def __init__(self, tree, model, dtlrates, erates, intbrnp=0.95, gmap={}, is_init=False):
         GenomeBase.__init__(self)
@@ -534,6 +535,7 @@ class GPolySolver(GenomeBase):
     @classmethod
     def setGeneMap(clc, val):
         clc.gmap = val
+        clc.reversemap = dict((gname, spname) for spname in clc.gmap.keys() for gname in clc.gmap[spname])
 
     @classmethod
     def setReconcile(clc, recparam):
@@ -581,6 +583,11 @@ class GPolySolver(GenomeBase):
         newcopy = GPolySolver(None, None,None, None)
         self.copy(newcopy)
         return newcopy
+
+    def set_species(self):
+        for node in self.tree:
+            if not node.has_feature("species"):
+                node.add_features(species=self.reversemap[node.name])
     
     def __eq__(self, other):
         """Comparison of GenomeBase instance"""

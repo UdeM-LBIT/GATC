@@ -500,7 +500,6 @@ class GSimpleGA(object):
             newPop.moop_sort(nextPop)
 
         elif self.elitism:
-            print "WTH"
             t = time()
             logging.debug("Doing elitism.")
             for i in xrange(self.nElitismReplacement):
@@ -513,7 +512,6 @@ class GSimpleGA(object):
 
         elif self.getParam('fastconv', False):
             # lazyness overload
-            print "WTHHH"
             t = time()
             logging.debug("Running in fastconv mode.")  
             # we are going to remove SPR that increased overall cost

@@ -335,8 +335,7 @@ def terminate_crit_au_test(known_best, alpha, ga_engine):
 def terminate_crit_conv(thresh, ga_engine):
     # convergence based on distance between worst ind and best ind improvement
     # stop
-    global WORST_IND
-    global BEST_IND
+    global WORST_IND, BEST_IND
 
     return abs(WORST_IND[-1][0] - BEST_IND[-1][0]) <= abs(thresh) and \
         WORST_IND[-1][1] == BEST_IND[-1][1]
@@ -357,7 +356,7 @@ def terminate_crit_lkl(bestRawScore, ga_engine):
 
 
 def stepcallback(verbose, ga_engine):
-    global BEST_IND, AVG_IND, WORST_IND
+    global BEST_IND, AVG_IND, WORST_IND, AVG_FIT
     cur_best = ga_engine.bestIndividual()
     cur_worst = ga_engine.worstIndividual()
     stat = ga_engine.getStatistics()

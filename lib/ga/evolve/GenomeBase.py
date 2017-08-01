@@ -91,7 +91,7 @@ class GenomeBase(object):
     def resetStats(self):
         """ Clear score and fitness of genome """
         self.score = []
-        self.fitness = 0.0
+        self.fitness = 0
 
     def evaluate(self, **args):
         """ Called to evaluate genome

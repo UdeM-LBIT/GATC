@@ -896,6 +896,9 @@ def polySolverPreprocessing(genetree, specietree, distance_mat, capitalize=False
         if isinstance(distance_mat, basestring):
             gene_matrix, node_order = clu.distMatProcessor(
                 distance_mat, nFlagVal, nFlag)
+        elif isinstance(distance_mat, tuple) and isinstance(distance_mat[0], (np.ndarray, np.generic)):
+            gene_matrix, node_order = distance_mat
+
         else:
             # distance mat is provided as a boolean
             # in that case, just try to get it from the genetree

@@ -141,7 +141,6 @@ class GSimpleGA(object):
             self.internalPop = genomes
         else:
             Util.raiseException("genomes should be a single Genome from GenomeBase or a GPopulation", TypeError)
-
         
         self.nGenerations = Consts.CDefGAGenerations
         self.pMutation = Consts.CDefGAMutationRate

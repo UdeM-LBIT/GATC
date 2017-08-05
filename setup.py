@@ -70,10 +70,10 @@ setup(
         'Topic :: Education',
         ],
 
-    packages=['lib', 'lib.TreeLib', 'lib.raxmlib', 'lib.ga', 'lib.ga.evolve', 'lib.reclkl'],
+    packages=['lib', 'lib.TreeLib', 'lib.raxmlib', 'lib.ga', 'lib.ga.evolve', 'lib.reclkl', 'lib.PolytomySolver'],
     py_modules=[],
     scripts=['bin/gatc'],
-    install_requires=['scipy', 'numpy', 'ete3', 'biopython'],
+    install_requires=['numpy', 'scipy', 'matplotlib', 'ete3', 'biopython'],
     cmdclass=cmdclass,
     ext_modules=modules
     )

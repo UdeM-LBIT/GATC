@@ -1,13 +1,17 @@
 #!/usr/bin/env python
-import matplotlib.pyplot as plt   
+import matplotlib.pyplot as plt
 import os
-if not os.environ.get('DISPLAY', ''):  
+if not os.environ.get('DISPLAY', ''):
     plt.switch_backend('agg')
 from lib import *
 from argparse import ArgumentTypeError, ArgumentParser, SUPPRESS
 import re
 import time
+from StringIO import StringIO
 from Bio import AlignIO
+from Bio import Phylo
+from Bio.Phylo.Consensus import bootstrap_trees
+from Bio.Phylo.TreeConstruction import DistanceCalculator, DistanceTreeConstructor
 from collections import defaultdict
 import numpy as np
 import lib.ga.evolve as evolve
@@ -23,14 +27,17 @@ import uuid
 import itertools
 import logging
 
-raxmlBin = ["raxml"] + ["raxmlHPC"+ x for x in "|-SSE3|-PTHREADS|-PTHREADS-SSE3|-HYBRID|-HYBRID-SSE3".split('|')]
+raxmlBin = ["raxml"] + ["raxmlHPC" +
+                        x for x in "|-SSE3|-PTHREADS|-PTHREADS-SSE3|-HYBRID|-HYBRID-SSE3".split('|')]
 expected_nuc = set(['N', 'A', 'T', 'C', 'G'])
-global BEST_IND, AVG_IND, WORST_IND, AVG_FIT
-BEST_IND, AVG_IND, WORST_IND, AVG_FIT = [], [], [], []
 
+global BEST_IND, AVG_IND, WORST_IND, AVG_FIT, ALL_IND, all_cloud
+BEST_IND, AVG_IND, WORST_IND, AVG_FIT, ALL_IND = [], [], [], [], []
+all_cloud = False
 
-VERSION = "1.0.0rc"
-DESC="GATC"
+VERSION = "1.0.1rc"
+DESC = "GATC"
+
 
 class Output(object):
 
@@ -90,10 +97,78 @@ def change_leaf_name(tree, specmap):
     return tree
 
 
-def construct_initial_trees(alignment, initalgo, sptree=None):
+def construct_initial_trees(msa, initalgo, nsample, **kwargs):
+    """Create initial list of tree if not provided"""
+    tlist = []
+    # list of all the thing to initialize
+    initalgo = initalgo.lower()
+    smap = kwargs.get('smap', {})
+    raxmlmod = kwargs.get("raxmlmodel", None)
+    seq_id = kwargs.get("ids", [])
+    dlparam = kwargs.get("dtl", None)
+    sptree = TreeClass(kwargs.get("sptree", ""))
+    dtype = kwargs.get('dtype', 'dna').lower()
+    distmat = kwargs.get("distmat", 'blosum62')
+    dup, loss = dlparam.getDup(), dlparam.getLoss()
+    dna_good = ('dna' in dtype and distmat in DistanceCalculator.dna_models)
+    prot_good = (
+        'prot' in dtype and distmat in DistanceCalculator.protein_models)
+    smap = dict((z, x) for x, y in smap.items() for z in y)
+    if not (dna_good or prot_good):
+        raise ValueError(
+            "You cannot not use %s model with %s data" % (dtype, distmat))
 
-    # TODO : implement algorithm for inital population when not provided
-    pass
+    if initalgo == "rboot" and raxmlmod:
+        tlist = raxmlmod.generate_bootstrap(nsample)
+        for t in tlist:
+            # mid point rooting for a tree
+            t.set_outgroup(t.get_midpoint_outgroup())
+
+    elif initalgo == 'random':
+        for i in xrange(nsample):
+            t = TreeClass()
+            t.populate(len(seq_id), names_library=seq_id)
+            tlist.append(t)
+
+    elif initalgo == 'nj':
+        calculator = DistanceCalculator(distmat)
+        constructor = DistanceTreeConstructor(calculator, 'nj')
+        for t in bootstrap_trees(msa, nsample, constructor):
+            t = TreeClass(t.format('newick'), format=1)
+            t.set_outgroup(t.get_midpoint_outgroup())
+            tlist.append(t)
+
+    elif initalgo == 'pnj':
+
+        # essentially run profileNJ
+        # this avoid using it as requirement
+        # since the main code is in the TreeLib package anyway
+        mat = DistanceCalculator(distmat).get_distance(msa)
+        lens = np.array([len(i) for i in mat.matrix])
+        mask = np.arange(lens.max()) < lens[:, None]
+        out = np.zeros(mask.shape, dtype=np.float)
+        out[mask] = np.concatenate(mat.matrix)
+        distance_mat = (out + out.T - np.diag(out.diagonal()), mat.names)
+        params.set({}, {}, (dup, loss), 'default')
+        print smap
+        oritree, specietree, distance_matrix, node_order = TreeUtils.polySolverPreprocessing(
+            TreeClass("(" + ",".join(seq_id) + ");"), sptree, distance_mat, smap=smap)
+        # it is possible that the required number of tree won't be obtained
+        tlist = solvePolytomy(oritree, specietree, distance_matrix, node_order,
+                              verbose=False, sol_limit=nsample, method='nj', path_limit=-1)
+        # no enough trees
+        if len(tlist) < nsample / 2:
+            nsample -= len(tlist)
+            for gtree in oritree.reroot():
+                tlist += solvePolytomy(gtree, specietree, distance_matrix, node_order,
+                                       verbose=False, sol_limit=nsample, method='nj', path_limit=-1)
+                nsample -= len(tlist)
+                if nsample <= 0:
+                    break
+    else:
+        raise NotImplemented
+
+    return tlist
 
 
 def get_trees(treefile, specmap=None, correct=False, ignore_dup=False, maxrcost=None):
@@ -129,7 +204,8 @@ def get_trees(treefile, specmap=None, correct=False, ignore_dup=False, maxrcost=
         allowed_gene_name = sorted(trees_list[0].get_leaf_names())
     for t in trees_list:
         if sorted(t.get_leaf_names()) != allowed_gene_name:
-            logging.debug("A tree does not share the same leafset with the other ones.")
+            logging.debug(
+                "A tree does not share the same leafset with the other ones.")
             logging.debug(t.get_leaf_names())
             logging.debug(allowed_gene_name)
             raise ValueError("Trees should all have the same leafset")
@@ -142,6 +218,7 @@ def is_nuc_align(aln):
         if (set(srec.seq) - expected_nuc):
             return False
     return True
+
 
 def check_binaries(binlist=['raxmlHPC-SSE3', 'raxml']):
     found = False
@@ -212,9 +289,6 @@ def evolve_ga(treelist, raxmlmod, specmap, ngen, popsize, freqstat, recparam, dt
     if termcrit:
         ga.terminationCriteria.set(termcrit)
 
-    else:
-        ga.terminationCriteria.set(GSimpleGA.ConvergenceCriteria)
-
     if mutrate:
         ga.setMutationRate(mutrate)
 
@@ -264,7 +338,7 @@ def randomly_split(gpop, selection):
 
 def is_outlier(points, thresh=3.5):
     if len(points.shape) == 1:
-        points = points[:,None]
+        points = points[:, None]
     median = np.median(points, axis=0)
     diff = np.sum((points - median)**2, axis=-1)
     diff = np.sqrt(diff)
@@ -273,6 +347,7 @@ def is_outlier(points, thresh=3.5):
     modified_z_score = 0.6745 * diff / med_abs_deviation
 
     return modified_z_score > thresh
+
 
 def terminate_crit_fc(iloop, thresh, ga_engine):
     gpop = ga_engine.getPopulation()
@@ -289,10 +364,11 @@ def terminate_crit_fc(iloop, thresh, ga_engine):
             acc += 1
     return acc >= iloop - 1
 
+
 def jaccard(set1, set2):
     m11 = np.count_nonzero(np.logical_and(set1, set2))
     mxx = np.count_nonzero(np.logical_xor(set1, set2))
-    return (m11+0.0) / (m11 + mxx)
+    return (m11 + 0.0) / (m11 + mxx)
 
 
 def terminate_crit_wc(iloop, thresh, ga_engine):
@@ -332,15 +408,6 @@ def terminate_crit_au_test(known_best, alpha, ga_engine):
     return success
 
 
-def terminate_crit_conv(thresh, ga_engine):
-    # convergence based on distance between worst ind and best ind improvement
-    # stop
-    global WORST_IND, BEST_IND
-
-    return abs(WORST_IND[-1][0] - BEST_IND[-1][0]) <= abs(thresh) and \
-        WORST_IND[-1][1] == BEST_IND[-1][1]
-
-
 def terminate_crit_lkl(bestRawScore, ga_engine):
     """ Terminate the evolution using the **bestrawscore** and **rounddecimal**
     parameter obtained from the individual
@@ -356,7 +423,16 @@ def terminate_crit_lkl(bestRawScore, ga_engine):
 
 
 def stepcallback(verbose, ga_engine):
-    global BEST_IND, AVG_IND, WORST_IND, AVG_FIT
+    global BEST_IND, AVG_IND, WORST_IND, AVG_FIT, ALL_IND, all_cloud
+
+    # save all visited individuals at each generation
+    # aka sampling the search space
+    if all_cloud:
+        tot_pop = []
+        for ind in ga_engine.internalPop:
+            tot_pop.extend([len(ALL_IND)] + ind.score + [ind.tree.write()])
+        ALL_IND.append(tot_pop)
+
     cur_best = ga_engine.bestIndividual()
     cur_worst = ga_engine.worstIndividual()
     stat = ga_engine.getStatistics()
@@ -365,23 +441,25 @@ def stepcallback(verbose, ga_engine):
     AVG_IND.append(stat['rawAve'])
     AVG_FIT.append(stat['fitAve'])
     if verbose:
-        logging.debug("\nCurrent generation : %d" % ga_engine.currentGeneration)
+        logging.debug("\nCurrent generation : %d" %
+                      ga_engine.currentGeneration)
         logging.debug("Population size : %d" % len(ga_engine.internalPop))
         for i, p in enumerate(ga_engine.internalPop):
-            logging.debug("Ind %d | seq: %f, rec: %f ==> fit: %f" % (i,  p.score[0], p.score[1], p.fitness))
+            logging.debug("Ind %d | seq: %f, rec: %f ==> fit: %f" %
+                          (i,  p.score[0], p.score[1], p.fitness))
         logging.debug("Best individual score : %s" %
-              ", ".join(["%.2f" % x for x in BEST_IND[-1]]))
+                      ", ".join(["%.2f" % x for x in BEST_IND[-1]]))
         logging.debug("Worst individual score : %s" %
-              ", ".join(["%.2f" % x for x in WORST_IND[-1]]))
-      
+                      ", ".join(["%.2f" % x for x in WORST_IND[-1]]))
+
     return False
 
 
 def print_output(treelist, outfile):
     outlog = Output(outfile) if outfile else Output()
-    for i,ind in enumerate(treelist):
+    for i, ind in enumerate(treelist):
         score = ind.getRawScore()
-        tree =  best_ind.get_tree_with_br()
+        tree = ind.get_tree_with_br()
         s = "lkl=%.3f" % score[0]
         if len(score) > 1:
             s += " dtlrate=%.3f" % score[1]
@@ -460,33 +538,38 @@ if __name__ == '__main__':
 
     parser.add_argument('--plot_lkl', action='store_true',
                         help="Plot best ind likelihood for each generation")
+    parser.add_argument('--sample_space', action='store_true', dest="popsampling",
+                        help="Return all individuals in the population for each generation. Will slow the algorithm")
     parser.add_argument('--nout', type=int, default=1,
                         help="Number of output trees to save")
-  
+
     parser.add_argument('--output', '-o', dest='output',
                         help="Output file in which best trees should be saved")
     parser.add_argument('--verbose', action="store_true",
                         help="Print GA status at each step")
 
-    seqlkl = parser.add_argument_group("Sequence likelihood", "Sequence likelihood parameters")
-    seqlkl.add_argument('--aln', '-a', dest="align", help="A sequence alignment file")
+    seqlkl = parser.add_argument_group(
+        "Sequence likelihood", "Sequence likelihood parameters")
+    seqlkl.add_argument('--aln', '-a', dest="align",
+                        help="A sequence alignment file")
     seqlkl.add_argument('--alnfmt', '-f', dest="fmt", default="fasta", choices=fmtchoice,
                         help="The file format of the sequence alignment. The alignment is assumed to be in fasta format by default")
     seqlkl.add_argument('--seqmodel', '-m', dest='raxmlmodel',
                         help="Raxml model to use. If you do not provide this, it will guess your sequence type and use either GTRGAMMA or PROTGAMMALG")
     seqlkl.add_argument('--extras',  dest='raxmlextra',
                         default="", help="Raxml extra arguments")
-    
+
     galgo = parser.add_argument_group(
         'Genetic algo', 'Use genetic algorithm to find the best permutation')
     galgo.add_argument('--gen', type=int, default=10,
                        dest='ngen', help="Number of generations for the G.A.")
     galgo.add_argument('--popsize', type=int, default=0, dest='popsize',
-                       help="Genetic population size, will clone genome or remove from initial pop untill this is met.")
+                       help="Genetic population size. Genomes will be cloned or removed from the initial population until the size requirement is met")
     galgo.add_argument('--freqrep', type=int, default=2,
                        help="Frequency of report (each freqrep) generations")
     galgo.add_argument('--mutrate', type=float01,
                        default=0.5, help="Mutation rate")
+    # help="Use a fast convergence system that might accelerate the GA. Note that there is a rick of being stuck in a local optima"
     galgo.add_argument('--fastconv', action="store_true", help=SUPPRESS)
     galgo.add_argument('--crossrate', type=float01,
                        default=0.8, help="Crossover rate")
@@ -497,15 +580,16 @@ if __name__ == '__main__':
     galgo.add_argument('--parallel', dest='parallel', nargs='?', const=4, type=int,
                        default=0, help="Set parallel mode for tree evaluation and mutation/crossover")
     galgo.add_argument('--smap', '-S', dest="smap",
-                        help="Gene to species map. Use the standard format.")
+                       help="Gene to species map. Use the standard format.")
     galgo.add_argument('--sep', dest='genesep',
-                        help="Gene-Specie separator for each leaf name in the genetree. This is an alternative for the --smap option")
+                       help="Gene-Specie separator for each leaf name in the genetree. This is an alternative for the --smap option")
     galgo.add_argument('--spos', dest='spos', default="prefix",
-                        help="The position of the specie name according to the separator.")
+                       help="The position of the specie name according to the separator.")
     galgo.add_argument(
         '--sprconstr', help="Constraints for the SPR moves given the species tree, *** Not implemented")
     galgo.add_argument('--use_weight', metavar=('aln', 'recon'), dest='weight', type=float, nargs=2,
-                       help="Use weight values for sequence likelihood and reconciliation likelihood when computing fitness. The MOOP framework will be used for parcimonie reconciliation if not provided, while and unit values will be used for likelihood.")
+                       help="Use weight values for sequence likelihood and reconciliation likelihood when computing fitness. The MOOP framework will always be used for parsimony reconciliation. Unit values will be used if not provided.")
+    # help="Scale raw score to a minimum of zero"
     galgo.add_argument('--minscale', action="store_false", dest="keepraw", help=SUPPRESS)
     galgo.add_argument('--runid', default="", help=SUPPRESS)
 
@@ -521,24 +605,25 @@ if __name__ == '__main__':
     recon.add_argument('--sptree', '-s', help="HGT rate in a genome")
     recon.add_argument('--dtlrate', nargs=3, metavar=('dup', 'hgt', 'loss'),
                        default=["1f", "0f", "1f"], help="DTL cost to use, order: Dup, Trans, Loss")
-    recon.add_argument('--raterange', type=float, nargs=3, metavar=('low', 'high', 'sigma'), default=[1e-6, 10, 1], help="Rates range limit when the rate is not fixed. New values are obtained from a truncated normal distribution with mean being the current value")
+    recon.add_argument('--raterange', type=float, nargs=3, metavar=('low', 'high', 'sigma'), default=[
+                       1e-6, 10, 1], help="Rates range limit when the rate is not fixed. New values are obtained from a truncated normal distribution with mean being the current value")
     recon.add_argument('--edgerate', nargs=2, metavar=('mean', 'sigma'), default=[
                        '1.0f', '1.0f'], help="Edge rate variation parameter under a iid gamma")
     recon.add_argument('--discrsize', type=int, default=10,
                        help="Interval discretisation size for the species tree")
     recon.add_argument('--eventselector', type=int, nargs=4, metavar=("spr", "reroot", "dtl", "edge"), default=[0.4, 0.2, 0.2, 0.2],
-                       help="Probability of selection for the following mutation: SPR, REROOT, DTL, EDGE. DTL and EDGE are set to zero when using parcimonie")
+                       help="Probability of selection for the following mutation: SPR, REROOT, DTL, EDGE. Events probabilities are redistributed when some hyperparameters are fixed.")
     recon.add_argument('--stemlen', type=float01, default=1.0,
                        help="Stem length for the species tree")
 
     stopcrit = parser.add_argument_group(
         'Stopping criteria', 'Criteria to stop genetic algorithm')
-    stopcrit.add_argument('--crit', dest="crit", choices=('CONVD',
+    stopcrit.add_argument('--crit', dest="crit", choices=('CONV',
                                                           'FC', 'WC', 'SH', 'AU'), help="Stopping criterion")
     stopcrit.add_argument('--besttree',  dest='mltree',
                           help="Path to known best tree, given the sequences data")
-    stopcrit.add_argument('--alpha', default=0.95, type=float01,
-                          help="Threshold for WC and FC stopping criterion (0.95) and alpha for SH criterion (0.05), Should be a float in ]0,1[. Please avid FC and WC for small pop size")
+    stopcrit.add_argument('--alpha', default=0.05, type=float01,
+                          help="Threshold for WC and FC stopping criterion (0.95) and alpha for SH criterion (0.05), Should be a float in ]0,1[. Avoid FC and WC for small pop size")
     stopcrit.add_argument('--sloop', default=100, type=int,
                           help="Number of iteration for WC and FC stopping criterion")
     stopcrit.add_argument('--deltalkl', default=1, type=float,
@@ -548,10 +633,11 @@ if __name__ == '__main__':
 
     permalgo = parser.add_argument_group(
         'All permutation', 'Test all possibility for all input trees')
-    permalgo.add_argument('--allsearch', nargs='?', type=notzero, const=1,
-                          help="Perform all permutation on all input and return best trees. You can specifiy the number of trees you want. If you set it to a negative value, all trees will be returned")
+    
+    permalgo.add_argument('--allsearch', nargs='?', type=notzero, const=1, help ="Perform all permutation on all input and return best trees. You can specifiy the number of trees you want. If you set it to a negative value, all trees will be returned")
 
-    main = ArgumentParser(prog='GATC', parents=[parser], description="GATC", version=VERSION)
+    main = ArgumentParser(prog='GATC', parents=[
+                          parser], description="GATC", version=VERSION)
     sub_parser = main.add_subparsers()
     sub_parser.dest = 'command'
 
@@ -567,18 +653,21 @@ if __name__ == '__main__':
                                 help="Ignore label in input tree (Transform profileNJ to polytomysolver)")
 
     construct_parser = sub_parser.add_parser(
-        'construct', parents=[parser], help="Construct tree from the bottom")
-    construct_parser.add_argument('--initalgo', dest="initalgo", choices=('nj', 'pnj', 'random'),
+        'construct', parents=[parser], help="Construct tree from scratch")
+    construct_parser.add_argument('--initalgo', dest="initalgo", choices=('nj', 'pnj', 'random', 'rboot'),
                                   required=True, help="Algorithm to generate starting population from sequence")
-
 
     args = main.parse_args()
 
+    # whether or not we should sample trees in the search space
+    all_cloud = args.popsampling
+
     fmt = args.fmt if args.fmt != 'phylip' else "phylip-relaxed"
     if not args.align:
-        raise ArgumentError(
-                    "Sequence alignment missing, use -a/--aln argument")
+        raise ValueError(
+            "Sequence alignment missing, use -a/--aln argument")
     aln = AlignIO.read(args.align, format=fmt)
+    nuc_data = is_nuc_align(aln)
     aln_ids = [seqrec.id for seqrec in aln]
 
     specmap = defaultdict(list)
@@ -612,32 +701,40 @@ if __name__ == '__main__':
 
     model = args.raxmlmodel
     if not args.raxmlmodel:
-        model = "GTRGAMMA" if is_nuc_align(aln) else "PROTGAMMALG"
+        model = "GTRGAMMA" if nuc_data else "PROTGAMMAJTT"
     # get tree list
-    if args.command == 'correct':
-        treelist = get_trees(args.trees, specmap, correct=(
-            args.allsearch or args.ignoreleaf), ignore_dup=args.ignoreduptop, maxrcost=args.maxrcost)
-    else:
-        treelist = construct_initial_trees(aln, args.initalgo, args.sptree)
-
     btype, status = check_binaries(raxmlBin)
     # fix value
     raxmleps = 2.0
-
+    # initial edge and dtl params
+    init_edge_params = EdgeParams(args.edgerate, args.raterange)
+    init_dtl_params = DTLParams(
+        args.dtlrate, parcim=args.rectype == 'par', ratelim=args.raterange)
     if status:
         reestimate = False
         if (args.rectype == 'lkl'):
             reestimate = True
         raxmlmod = LklModel(aln, btype, model, raxmleps, extra_string=args.raxmlextra,
-                            reestimate=reestimate, title=args.runid+uuid.uuid4().hex[:6])
+                            reestimate=reestimate, title=args.runid + uuid.uuid4().hex[:6])
     else:
         if args.crit == 'AU':
-            raise ArgumentError("AU stop criterion not available without raxml binaries")
+            raise ValueError(
+                "AU stop criterion not available without raxml binaries")
         if args.rectype == 'lkl':
-            raise ArgumentError("You need raxml binaries for gene tree branch length in reconciliation under likelihood")
+            raise ValueError(
+                "You need raxml binaries for gene tree branch length in reconciliation under likelihood")
         raxmlmod = RAxMLModel(aln, model, raxmleps,
                               extra_string=args.raxmlextra)
 
+    if args.command == 'correct':
+        treelist = get_trees(args.trees, specmap, correct=(
+            args.allsearch or args.ignoreleaf), ignore_dup=args.ignoreduptop, maxrcost=args.maxrcost)
+    else:
+        dtype = 'dna' if nuc_data else 'prot'
+        distmat = 'identity' if nuc_data else 'blosum62'
+        nsample = max(args.popsize, 0) or 10
+        treelist = construct_initial_trees(aln, args.initalgo, nsample, smap=specmap, raxmlmodel=raxmlmod,
+                                           sptree=args.sptree, ids=aln_ids, distmat=distmat, dtype=dtype, dtl=init_dtl_params)
     res = []
     if args.allsearch:
         time, res = perform_perm(
@@ -653,18 +750,19 @@ if __name__ == '__main__':
         if args.crit == 'AU':
             btype, status = check_binaries(['consel'])
             if not status:
-                raise ArgumentError("AU stop criterion not available without consel binaries")
+                raise ValueError(
+                    "AU stop criterion not available without consel binaries")
         if args.crit in ['SH', 'AU']:
 
             if not besttree:
-                raise ArgumentError(
+                raise ValueError(
                     "Best ML tree not found for SH stopping criterion")
             else:
                 besttree = TreeClass(besttree)
 
-        stopping = {'CONVD':  partial(terminate_crit_conv, args.deltalkl),
-                    'FC':  partial(terminate_crit_fc, args.sloop, args.alpha),
-                    'WC': partial(terminate_crit_wc, args.sloop, args.alpha),
+        stopping = {'CONV':  GSimpleGA.ConvergenceCriteria,
+                    'FC':  partial(terminate_crit_fc, args.sloop, 1-args.alpha),
+                    'WC': partial(terminate_crit_wc, args.sloop, 1-args.alpha),
                     'SH': partial(terminate_crit_sh_test, besttree, args.alpha),
                     'AU': partial(terminate_crit_au_test, besttree, args.alpha)
                     }
@@ -676,15 +774,12 @@ if __name__ == '__main__':
             raise ValueError(
                 "PopSize and Number of generation should be strictly positive integer")
 
-        # initial edge and dtl params
-        init_edge_params = EdgeParams(args.edgerate, args.raterange)
-        init_dtl_params = DTLParams(
-            args.dtlrate, parcim=args.rectype == 'par', ratelim=args.raterange)
         recparam = None
         scalparam = None
         if args.enablerec:
             if not args.sptree:
-                raise ArgumentError("Reconciliation is expected, missing species tree (-s argument)")
+                raise ValueError(
+                    "Reconciliation is expected, missing species tree (-s argument)")
             scalparam = ScalingParams(
                 args.weight, args.use_sigmoid, args.keepraw, args.rectype == 'par')
             recparam = ReconParams(args.sptree, len(treelist[
@@ -692,19 +787,20 @@ if __name__ == '__main__':
 
         # leave if that way to track of what i'm passing as argument
         ga = evolve_ga(treelist, raxmlmod, specmap, args.ngen,
-                       args.popsize, args.freqrep, recparam, init_dtl_params, init_edge_params, 
+                       args.popsize, args.freqrep, recparam, init_dtl_params, init_edge_params,
                        timelimit=args.timelim, step=step, verbose=args.verbose, parallel=args.parallel,
                        termcrit=stopping.get(args.crit, None), mutrate=args.mutrate, elitism=args.elitism,
-                       crossrate=args.crossrate, fastconv=args.fastconv, sclparam=scalparam, selector=selectors[args.selector], logfile=args.output+"_ga.log")
+                       crossrate=args.crossrate, fastconv=args.fastconv, sclparam=scalparam, selector=selectors[args.selector], logfile=args.output + "_ga.log")
 
-
-        res = [best_ind for best_ind in ga.bestNIndividuals(args.nout) ]
+        res = [bind for bind in ga.bestNIndividuals(args.nout)]
 
         if args.plot_lkl:
             logging.debug("\n Evolution end")
-            logging.debug('BEST_IND: %s'%", ".join([str(x) for x in BEST_IND]))
-            logging.debug('AVG_IND: %s'%", ".join([str(x) for x in AVG_IND]))
-            logging.debug('WORST_IND: %s'%", ".join([str(x) for x in WORST_IND]))
+            logging.debug('BEST_IND: %s' %
+                          ", ".join([str(x) for x in BEST_IND]))
+            logging.debug('AVG_IND: %s' % ", ".join([str(x) for x in AVG_IND]))
+            logging.debug('WORST_IND: %s' %
+                          ", ".join([str(x) for x in WORST_IND]))
             BEST_IND = np.array(BEST_IND)
             AVG_IND = np.array(AVG_IND)
             WORST_IND = np.array(WORST_IND)
@@ -730,3 +826,9 @@ if __name__ == '__main__':
                 args.output + "_fit.png" if args.output else "evolve_fit.png")
 
     print_output(res, args.output)
+    if all_cloud:
+        with open(args.output + "_sampling", 'w') as OUT:
+            for tot_pop in ALL_IND:
+                line = "%d\t%.5f\t%.2f\t%s\n" % (int(tot_pop[0]), tot_pop[
+                                                 1], tot_pop[2], tot_pop[-1])
+                OUT.write(line)

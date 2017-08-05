@@ -35,6 +35,20 @@ def calculate_likelihood(cmd, title, ext="", basedir=os.path.abspath(os.getcwd()
     get_rid_of(infofiles)
     return likelihoods, trees
 
+
+def get_bootstrap(cmd, title, ext="", basedir=os.path.abspath(os.getcwd())):
+    cmd = cmd+ "-n %s -w %s" % (title+ext, basedir)
+    rst = executeCMD(cmd)
+    infofiles = glob.glob("%s/RAxML*.%s" % (basedir,title+ext))
+    boot_file = [x for x in infofiles if 'RAxML_bootstrap' in x][0]
+    trees = []
+    with open(boot_file) as BOOT_IN:
+        for line in BOOT_IN:
+            trees.append(TreeClass(line.strip()))
+    get_rid_of(infofiles)
+    return trees
+
+
 def compute_sh_test(cmd, title,ext="", basedir=os.path.abspath(os.getcwd())):
     cmd = cmd+ "-n %s -w %s" % (title+ext, basedir)
     rst = executeCMD(cmd)
@@ -171,6 +185,7 @@ class LklModel():
 
     def __del__(self):
         # release wdir garbage
+        os.remove(self.alignment)
         shutil.rmtree(self.wdir, ignore_errors=True)
         #get_rid_of(glob.glob("%s/RAxML*.%s*" % (self.wdir,self.title)))
 
@@ -220,6 +235,12 @@ class LklModel():
         """Draw raxml tr -- adef and tr must have been previously defined"""
         print(self.curr_LH)
     
+    def generate_bootstrap(self, nboot, **kwargs):
+        """Generate bootstrap replicate for the sequence alignment"""            
+        bcmd = "%s -m %s -p 12345 -x 12345 -N %d -s %s "%(self.cmd, self.model, nboot, self.alignment) 
+        btrees = get_bootstrap(bcmd, self.title, ext=kwargs.get("ext", uuid.uuid4().hex[:3])+"_boot", basedir=self.wdir)
+        return btrees
+
     def compute_consel_test(self, *args, **kwargs):
         """Compute consel output for a bunch of trees in argument"""
         # start by building a file with th two trees

@@ -74,7 +74,7 @@ class Utils:
                         spec_pos = keylist[node.name]
                         node.name =  plabel[spec_pos][ind[spec_pos]]
                         ind[spec_pos] += 1
-                    score = raxmlmod.optimize_model(tcop)
+                    score, _ = raxmlmod.optimize_model(tcop)
                     i += 1
                     print("Trees %d, score : %f" %(i, score))
                     if ntrees<0 or len(best_trees) <= ntrees:
@@ -594,7 +594,7 @@ class GPolySolver(GenomeBase):
         same_score = False
         if self.score and other.score:
             if isinstance(self.score, list) and isinstance(other.score, list) and len(self.score) == len(other.score):
-                same_score = all([self.score[i]==other.score[i] for i in xrange(self.score)])
+                same_score = all(["%.5f"%s == "%.5f"%other.score[i] for i,s in enumerate(self.score)])
             else:
                 same_score = (self.score == other.score)
         rf = self.tree.robinson_foulds(other.tree)

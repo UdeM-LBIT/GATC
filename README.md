@@ -6,7 +6,8 @@ GATC find the best tree according to both sequence data and species tree reconci
 A typical run of the program starting with a population of trees to correct is :
 
 
-```gatc correct -t example/gtree.trees  --aln example/aln.fasta -S example/smap  -f 'fasta' --gen 50 --plot_lkl --output example/output  --timelim 120 --freqrep 1 --crossrate 0.8 --mutrate 0.6  --crit 'AU' --besttree example/mltree.nw  --parallel  --rectype par --dtlrate 2f 3f 1f -s example/sptree.nw --alpha 0.05 --nout 5
+```
+gatc correct -t example/gtree.trees  --aln example/aln.fasta -S example/smap  -f 'fasta' --gen 50 --plot_lkl --output example/output  --timelim 120 --freqrep 1 --crossrate 0.8 --mutrate 0.6  --crit 'AU' --besttree example/mltree.nw  --parallel  --rectype par --dtlrate 2f 3f 1f -s example/sptree.nw --alpha 0.05 --nout 5
 ```
 
 In this example, the dtl rates are fixed, by appending `"f"` to their values. GATC is used to correct the initial set of tree with the MOOP framework.

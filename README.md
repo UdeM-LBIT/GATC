@@ -7,6 +7,7 @@ GATC find the best tree according to both sequence data and species tree reconci
 ## Installation 
 Clone or Download the github repository then run ```python setup.py build``` and ```python setup.py install```
 
+## Running
 A typical run of the program starting with a population of trees to correct is :
 
 

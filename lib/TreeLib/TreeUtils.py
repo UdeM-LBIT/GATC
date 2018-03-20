@@ -27,12 +27,16 @@ import itertools
 # TreeUtils:
 
 class MatrixRep(object):
-    def __init__(self, genetree, speciestree, defval=0):
+    def __init__(self, genetree, speciestree, defval=0, is_tree=True):
+            
         self.gtree = genetree
         self.stree = speciestree
+        if is_tree:
+            self.gtree = list(genetree.traverse("postorder"))
+            self.stree = list(speciestree.traverse("postorder"))
         # keeping tree as key (in case the name was not set for internal nodes)
-        self.gmap = dict((gn, i) for i, gn in enumerate(genetree.traverse("postorder")))
-        self.smap = dict((sn, i) for i, sn in enumerate(speciestree.traverse("postorder")))
+        self.gmap = dict((gn, i) for i, gn in enumerate(self.gtree))
+        self.smap = dict((sn, i) for i, sn in enumerate(self.stree))
         self.matrix = np.empty((len(self.gmap), len(self.smap)))
         self.matrix.fill(defval)
         self.shape = self.matrix.shape
@@ -50,15 +54,15 @@ class MatrixRep(object):
             for (s,i_s) in self.smap.items():
                 yield (g,s, self.matrix[i_g, i_s])
     
-    def _reformat_slice(self, slice, map):
-        return id if isinstance(id, int) else map.get(id, None)
+    def _reformat_slice(self, pos, mapping):
+        return pos if isinstance(pos, int) else mapping.get(pos, None)
 
-    def _get_new_index(self, index, map):
+    def _get_new_index(self, index, mapping):
         start =  index.start
         stop =  index.stop
         step = index.step
-        start = self._reformat_slice(start, map)
-        stop = self._reformat_slice(stop, map)
+        start = self._reformat_slice(start, mapping)
+        stop = self._reformat_slice(stop, mapping)
         step = step if isinstance(step, int) else None
         return slice(start, stop, step)
         
@@ -69,7 +73,7 @@ class MatrixRep(object):
             return self.matrix[self.gmap[index]]
         elif isinstance(index, int):
             return self.matrix[index]
-        # in th folowing, we are returning a slice
+        # in the folowing, we are returning a slice
         elif isinstance(index, slice):
             index = self._get_new_index(index, self.gmap)
             return self.matrix[index] 
@@ -432,8 +436,154 @@ def computeDLScore(genetree, lcaMap=None, dupcost=None, losscost=None):
         raise Exception("LcaMapping not provided !!")
     return dup_score, loss_score
 
+"""
+def amalgamate(gtree, glist, speciestree, d=1, t=1, l=1):
+    #Amalgamation of a set of gene tree into a single tree
+    # Any number of bootstrap trees can be used, but we found 
+    # limited increase in accuracy in simulated data as a
+    # result of using more than 10 (David and Alm, 2011).
+
+    # Start by labeling internal nodes of glist
+
+    leafMap = {}
+    for leaf in gtree:
+        if not leaf.has_feature('species'):
+            raise ValueError("You should set species before calling")
+        leafMap[leaf.name] = speciestree&leaf.species
+    
+    tot_gtree = [gtree]+glist
+    # copy tree to allow modification
+    tot_gtree = [t.copy() for t in tot_gtree]
+    node_alt = ddict(list)
+    label_list = set([])
+    
+    best_known = {} # map a label to cost + best topology
+    for gt in tot_gtree:
+        for node in gt.traverse("postorder"):
+            node.add_features(label="|".join(sorted(node.get_leaf_names())))
+            node_alt[node.label].append(node)
+            if len(node) < 3:
+                for snode in speciestree.traverse("postorder"):
+                    computeDTLmat(node, node_map, snode, d, t, l)
+
+
+    cost_table = MatrixRep(gtree, speciestree, np.inf)
+    spec_table = MatrixRep(gtree, speciestree, np.inf)
+    dup_table = MatrixRep(gtree, speciestree, np.inf)
+    trf_table = MatrixRep(gtree, speciestree, np.inf)
+    in_table = MatrixRep(gtree, speciestree, np.inf)
+    inAlt_table = MatrixRep(gtree, speciestree, np.inf)
+    out_table = MatrixRep(gtree, speciestree, np.inf)
+    
+
+    for gleaf in gtree:
+        glsmap = leafMap[gleaf]
+        cost_table[gleaf, glsmap] = 0
+        comp_spec = glsmap
+        while comp_spec is not None:
+            inAlt_table[gleaf, comp_spec] = 0
+            in_table[gleaf, comp_spec] = Lc*(-comp_spec.depth + glsmap.depth)
+            comp_spec =  comp_spec.up
+    
+
+    best_topo = MatrixRep(labellist, speciestree.get)
+    pass
+
+def computeDTLmat(gnode, node_map, snode, Dc=1, Tc=1, Lc=1):
+    #Compute the best reconciliation between at a gtree node for
+    a given species tree node.
+    # We are going to assume that gnode is an internal node.
+    gchild1, gchild2 = gnode.get_children()
+
+    cost_table = MatrixRep(genetree, speciestree, np.inf)
+    spec_table = MatrixRep(genetree, speciestree, np.inf)
+    dup_table = MatrixRep(genetree, speciestree, np.inf)
+    trf_table = MatrixRep(genetree, speciestree, np.inf)
+    in_table = MatrixRep(genetree, speciestree, np.inf)
+    inAlt_table = MatrixRep(genetree, speciestree, np.inf)
+    out_table = MatrixRep(genetree, speciestree, np.inf)
+    
+    if snode.is_leaf():
+        node_map['spec_table'][gnode, snode] = np.inf
+        node_map['dup_table'][gnode, snode] = Dc + node_map['cost_table'][gchild1, snode] + node_map['cost_table'][gchild2, snode]
+        # because we can't have transfer at root
+        if not snode.is_root():
+            # one child is incomprable and the second
+            # is a descendant    
+            node_map['trf_table'][gnode, snode] = Tc + min(node_map['in_table'][gchild1, snode]+ node_map['out_table'][gchild2, snode], node_map['in_table'][gchild2, snode] + node_map['out_table'][gchild1, snode])
+        
+        node_map['cost_table'][gnode, snode] = min(
+            node_map['spec_table'][gnode, snode], 
+            node_map['dup_table'][gnode,snode], 
+            node_map['trf_table'][gnode, snode]
+            )
+        
+        in_table[gnode, snode] = cost_table[gnode, snode]
+        inAlt_table[gnode, snode] = cost_table[gnode, snode]
+
+    else:
+        schild1, schild2 = snode.get_children()
+        spec_table[gnode, snode] =  min(
+            in_table[gchild1, schild1] + in_table[gchild2, schild2], 
+            in_table[gchild1, schild2] + in_table[gchild2, schild1]
+            )
+        dcost_g_s = 0
+        if flag :
+            dcost_g_s = min(
+                cost_table[gchild1, snode] + in_table[gchild2, schild1] + Lc, # loss in one child
+                cost_table[gchild1, snode] + in_table[gchild2, schild2] + Lc,
+                cost_table[gchild2, snode] + in_table[gchild1, schild1] + Lc,
+                cost_table[gchild2, snode] + in_table[gchild1, schild2] + Lc,
+                cost_table[gchild2, snode] + cost_table[gchild1, snode], #both map to snode
+                in_table[gchild1, schild1] + in_table[gchild2, schild1] + 2*Lc, #both map to descendant of snode
+                in_table[gchild1, schild1] + in_table[gchild2, schild2] + 2*Lc, #both map to descendant of snode
+                in_table[gchild1, schild2] + in_table[gchild2, schild2] + 2*Lc, #both map to descendant of snode
+                in_table[gchild1, schild2] + in_table[gchild2, schild1] + 2*Lc, #both map to descendant of snode
+
+            )
+            
+        else: 
+            dcost_g_s = in_table[gchild1, snode] + in_table[gchild2, snode]
+        dup_table[gnode, snode] = Dc + dcost_g_s
+        if not snode.is_root():
+            trf_table[gnode, snode] = Tc + min(
+                in_table[gchild1, snode]+out_table[gchild2, snode], 
+                in_table[gchild2, snode] + out_table[gchild1, snode]
+                )
+
+        cost_table[gnode, snode] = min(
+            spec_table[gnode, snode],
+            dup_table[gnode, snode],
+            trf_table[gnode, snode]
+        )
+        in_table[gnode, snode] = min(
+            cost_table[gnode, snode],
+            in_table[gnode, schild1] + Lc,
+            in_table[gnode, schild2] + Lc
+        )
+        inAlt_table[gnode, snode] = min(
+                cost_table[gnode, snode],
+                inAlt_table[gnode, schild1],
+                inAlt_table[gnode, schild2]
+        )
+
+for snode in speciestree.iter_internal_node("preorder",True):
+    schild1, schild2 = snode.get_children()
+    out_table[gnode, schild1] = min(
+        out_table[gnode,snode],
+        inAlt_table[gnode, schild2]
+    )
+    out_table[gnode, schild2] = min(
+        out_table[gnode,snode],
+        inAlt_table[gnode, schild1]
+    )
+#print cost_table.matrix
+return np.min(cost_table[genetree])
+"""
 
 def computeDTLScore(genetree, speciestree, Dc=1, Tc=1, Lc=1, flag=True):
+    """Compute DTL cost for a genetree, given event cost and the 
+    corresponding species tree"""
     if not speciestree.has_feature('lcaprocess', True):
         speciestree.label_internal_node()
         lcaPreprocess(speciestree)
@@ -467,7 +617,7 @@ def computeDTLScore(genetree, speciestree, Dc=1, Tc=1, Lc=1, flag=True):
                 dup_table[gnode, snode] = Dc + cost_table[gchild1, snode] + cost_table[gchild2, snode]
                 # because we can't have transfer at root
                 if not snode.is_root():
-                    # one child is incomprable and the second
+                    # one child is incomparable and the second
                     # is a descendant    
                     trf_table[gnode, snode] = Tc + min(in_table[gchild1, snode]+out_table[gchild2, snode], in_table[gchild2, snode] + out_table[gchild1, snode])
                 

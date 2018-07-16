@@ -588,7 +588,7 @@ return np.min(cost_table[genetree])
 """
 
 def computeDTLScore(genetree, speciestree, Dc=1, Tc=1, Lc=1, flag=True, timeconsistent=False, timeframe=None):
-    return np.min(computeDTLMat(genetree, speciestree, Dc, Tc, Lc, flag=True, timeconsistent=False, timeframe=None))
+    return np.min(computeDTLMat(genetree, speciestree, Dc, Tc, Lc, flag=flag, timeconsistent=timeconsistent, timeframe=timeframe))
 
 def computeDTLMat(genetree, speciestree, Dc=1, Tc=1, Lc=1, flag=True, timeconsistent=False, timeframe=None):
     """Compute DTL cost for a genetree, given event cost and the 

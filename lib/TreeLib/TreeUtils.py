@@ -120,6 +120,12 @@ class MatrixRep(object):
         # let numpy manage the exceptions
         self.matrix[row_index, col_index] = val
 
+    def display(self, gnode):
+        """Display the MatRep for an entry gnode"""
+        row = self[gnode]
+        for i, sn in enumerate(self.stree):
+            print("%s: %.2f"%(sn.name, row[i]))
+
     
 def fetch_ensembl_genetree_by_id(treeID=None, aligned=0, sequence="none", output="nh", nh_format="full"):
     """Fetch genetree from ensembl tree ID
@@ -581,7 +587,10 @@ for snode in speciestree.iter_internal_node("preorder",True):
 return np.min(cost_table[genetree])
 """
 
-def computeDTLScore(genetree, speciestree, Dc=1, Tc=1, Lc=1, flag=True):
+def computeDTLScore(genetree, speciestree, Dc=1, Tc=1, Lc=1, flag=True, timeconsistent=False, timeframe=None):
+    return np.min(computeDTLMat(genetree, speciestree, Dc, Tc, Lc, flag=True, timeconsistent=False, timeframe=None))
+
+def computeDTLMat(genetree, speciestree, Dc=1, Tc=1, Lc=1, flag=True, timeconsistent=False, timeframe=None):
     """Compute DTL cost for a genetree, given event cost and the 
     corresponding species tree"""
     if not speciestree.has_feature('lcaprocess', True):
@@ -598,7 +607,6 @@ def computeDTLScore(genetree, speciestree, Dc=1, Tc=1, Lc=1, flag=True):
     dup_table = MatrixRep(genetree, speciestree, np.inf)
     trf_table = MatrixRep(genetree, speciestree, np.inf)
     in_table = MatrixRep(genetree, speciestree, np.inf)
-    inAlt_table = MatrixRep(genetree, speciestree, np.inf)
     out_table = MatrixRep(genetree, speciestree, np.inf)
     
     for gleaf in genetree:
@@ -606,11 +614,15 @@ def computeDTLScore(genetree, speciestree, Dc=1, Tc=1, Lc=1, flag=True):
         cost_table[gleaf, glsmap] = 0
         comp_spec = glsmap
         while comp_spec is not None:
-            inAlt_table[gleaf, comp_spec] = 0
-            in_table[gleaf, comp_spec] = Lc*(-comp_spec.depth + glsmap.depth)
+            in_table[gleaf, comp_spec] = Lc*(-comp_spec.depth + glsmap.depth) + cost_table[gleaf, glsmap] 
             comp_spec =  comp_spec.up
+
+        for snode_inc in glsmap.get_incomparable_list(timeconsistent=timeconsistent, wtime=timeframe):
+            out_table[gleaf, snode_inc] = cost_table[gleaf, glsmap]
+
     for gnode in genetree.iter_internal_node(strategy="postorder", enable_root=True):
         for snode in speciestree.traverse("postorder"):
+
             gchild1, gchild2 = gnode.get_children()
             if snode.is_leaf():
                 spec_table[gnode, snode] = np.inf
@@ -618,7 +630,6 @@ def computeDTLScore(genetree, speciestree, Dc=1, Tc=1, Lc=1, flag=True):
                 # because we can't have transfer at root
                 if not snode.is_root():
                     # one child is incomparable and the second
-                    # is a descendant    
                     trf_table[gnode, snode] = Tc + min(in_table[gchild1, snode]+out_table[gchild2, snode], in_table[gchild2, snode] + out_table[gchild1, snode])
                 
                 cost_table[gnode, snode] = min(
@@ -626,10 +637,8 @@ def computeDTLScore(genetree, speciestree, Dc=1, Tc=1, Lc=1, flag=True):
                     dup_table[gnode,snode], 
                     trf_table[gnode, snode]
                     )
-                
                 in_table[gnode, snode] = cost_table[gnode, snode]
-                inAlt_table[gnode, snode] = cost_table[gnode, snode]
-
+                
             else:
                 schild1, schild2 = snode.get_children()
                 spec_table[gnode, snode] =  min(
@@ -648,11 +657,11 @@ def computeDTLScore(genetree, speciestree, Dc=1, Tc=1, Lc=1, flag=True):
                         in_table[gchild1, schild1] + in_table[gchild2, schild2] + 2*Lc, #both map to descendant of snode
                         in_table[gchild1, schild2] + in_table[gchild2, schild2] + 2*Lc, #both map to descendant of snode
                         in_table[gchild1, schild2] + in_table[gchild2, schild1] + 2*Lc, #both map to descendant of snode
-
                     )
                     
                 else: 
                     dcost_g_s = in_table[gchild1, snode] + in_table[gchild2, snode]
+                
                 dup_table[gnode, snode] = Dc + dcost_g_s
                 if not snode.is_root():
                     trf_table[gnode, snode] = Tc + min(
@@ -665,29 +674,17 @@ def computeDTLScore(genetree, speciestree, Dc=1, Tc=1, Lc=1, flag=True):
                     dup_table[gnode, snode],
                     trf_table[gnode, snode]
                 )
-                in_table[gnode, snode] = min(
-                    cost_table[gnode, snode],
-                    in_table[gnode, schild1] + Lc,
-                    in_table[gnode, schild2] + Lc
-                )
-                inAlt_table[gnode, snode] = min(
-                        cost_table[gnode, snode],
-                        inAlt_table[gnode, schild1],
-                        inAlt_table[gnode, schild2]
-                )
+                
+                in_table[gnode, snode] = cost_table[gnode, snode]
+                #for snode_desc in snode.get_children():
+                #    in_table[gnode, snode] = min(in_table[gnode, snode], cost_table[gnode, snode_desc] + Lc*(-snode_desc.depth + snode.depth))
+                    
+            if not snode.is_root():
+                for snode_inc in snode.get_incomparable_list(timeconsistent=timeconsistent, wtime=timeframe):
+                    out_table[gnode, snode_inc] = min(out_table[gnode, snode_inc], cost_table[gnode, snode])
 
-        for snode in speciestree.iter_internal_node("preorder",True):
-            schild1, schild2 = snode.get_children()
-            out_table[gnode, schild1] = min(
-                out_table[gnode,snode],
-                inAlt_table[gnode, schild2]
-            )
-            out_table[gnode, schild2] = min(
-                out_table[gnode,snode],
-                inAlt_table[gnode, schild1]
-            )
-    #print cost_table.matrix
-    return np.min(cost_table[genetree])
+    return cost_table[genetree]
+
 
 def computeDL(genetree, lcaMap=None):
     """

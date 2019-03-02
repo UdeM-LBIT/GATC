@@ -9,6 +9,7 @@
 
 import os,sys
 from distutils.core import setup, Extension
+import numpy
 
 sys.path.insert(0, os.path.realpath(
     os.path.join(os.path.dirname(__file__), "lib")))
@@ -40,18 +41,18 @@ raxml_module = [ Extension('lib.raxmlib._raxml',
                          )]
 if USE_CYTHON:
     recon_module += [
-        Extension("lib.reclkl.computeLKL", sources=[ "src/recon/computeLKL.pyx" ]),
+        Extension("lib.reclkl.computeLKL", sources=[ "src/recon/computeLKL.pyx"], include_dirs=[numpy.get_include()]),
     ]
     cmdclass.update({ 'build_ext': build_ext })
 else:
     recon_module += [
-        Extension("lib.reclkl.computeLKL", sources=[ "src/recon/computeLKL.c" ]),
+        Extension("lib.reclkl.computeLKL", sources=[ "src/recon/computeLKL.c" ], include_dirs=[numpy.get_include()]),
     ]
 
 modules = raxml_module + recon_module
 
 setup(
-    name='gaperm',
+    name='GATC',
     version = VERSION, 
     description=DESC,
 

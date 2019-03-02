@@ -5,7 +5,23 @@ GATC find the best tree according to both sequence data and species tree reconci
 
 
 ## Installation 
-Clone or Download the github repository then run ```python setup.py build``` and ```python setup.py install```
+
+Clone or download the github repository then run: 
+	- ```pip install -r requirements.txt``` to install the required packages, 
+	- ```python setup.py build``` to build the C extension
+	- ```python setup.py install``` to install the package.
+
+Note that you will need to install `swig` and potentially `cython` as well. You will also have to install [consel](http://stat.sys.i.kyoto-u.ac.jp/prog/consel/) (also available from bioconda: https://anaconda.org/bioconda/consel) and `raxml`. 
+`consel` is required if you want to use the `AU stopping criterion` (as in the example command line) and should be available in you path (can be called by using the command line `consel`). 
+The `raxml` binary is needed if you want the `SH or AU stopping criteria`. It is used as failback when the provided `RAxML C library files` cannot be compiled (need `swig`)  and are almost the only way currently supported that allow parallel computation of the likelihood.
+GATC with test the following binary endpoints for raxml : `['raxml', 'raxmlHPC', 'raxmlHPC-SSE3', 'raxmlHPC-PTHREADS', 'raxmlHPC-PTHREADS-SSE3', 'raxmlHPC-HYBRID', 'raxmlHPC-HYBRID-SSE3']` before failing. Alternatively you can provide the path to the `raxml` binary using the option `--raxml_cmd`
+
+### Potential issues during installation. 
+
+If you have weird errors like : `.o: unable to initialize decompress status for section .debug_info`, it might be because the `gcc` compiler and the `ld` linker are not compatible.
+This is usually the case for conda/anaconda user. You need to either temporaly rename the anaconda `ld` or ensure that you are using a `gcc`  from your conda environment. 
+
+### 
 
 ## Running
 A typical run of the program starting with a population of trees to correct is :
@@ -18,8 +34,9 @@ gatc correct -t example/gtree.trees  --aln example/aln.fasta -S example/smap  -f
 In this example, the dtl rates are fixed, by appending `"f"` to their values. GATC is used to correct the initial set of tree with the MOOP framework.
 
 
-    usage: GATC [-h] [-v] [--plot_lkl] [--sample_space] [--nout NOUT]
-                [--output OUTPUT] [--verbose] [--aln ALIGN]
+	usage: GATC [-h] [-v] [--plot_lkl] [--sample_space] [--nout NOUT]
+                [--output OUTPUT] [--verbose] [--raxml_cmd RAXML_CMD]
+                [--aln ALIGN]
                 [--alnfmt {fasta,stockholm,clustal,nexus,maf,phylip}]
                 [--seqmodel RAXMLMODEL] [--extras RAXMLEXTRA] [--gen NGEN]
                 [--popsize POPSIZE] [--freqrep FREQREP] [--mutrate MUTRATE]
@@ -35,14 +52,14 @@ In this example, the dtl rates are fixed, by appending `"f"` to their values. GA
                 [--sloop SLOOP] [--deltalkl DELTALKL] [--timelim [TIMELIM]]
                 [--allsearch [ALLSEARCH]]
                 {correct,construct} ...
-
+    
     GATC
-
-    positional arguments_:
+    
+    positional arguments:
       {correct,construct}
         correct             Find best tree using a list of input tree
         construct           Construct tree from scratch
-
+    
     optional arguments:
       -h, --help            show this help message and exit
       -v, --version         show program's version number and exit
@@ -53,6 +70,11 @@ In this example, the dtl rates are fixed, by appending `"f"` to their values. GA
       --output OUTPUT, -o OUTPUT
                             Output file in which best trees should be saved
       --verbose             Print GA status at each step
+      --raxml_cmd RAXML_CMD
+                        How to call RAxML from the command line. This will be
+                        used as an alternative if the RAxML libraries cannot
+                        be compiled
+                            
 
     Sequence likelihood:
       Sequence likelihood parameters

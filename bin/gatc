@@ -29,6 +29,7 @@ import logging
 
 raxmlBin = ["raxml"] + ["raxmlHPC" +
                         x for x in "|-SSE3|-PTHREADS|-PTHREADS-SSE3|-HYBRID|-HYBRID-SSE3".split('|')]
+conselBin = ["consel"]
 expected_nuc = set(['N', 'A', 'T', 'C', 'G'])
 
 global BEST_IND, AVG_IND, WORST_IND, AVG_FIT, ALL_IND, all_cloud
@@ -125,7 +126,7 @@ def construct_initial_trees(msa, initalgo, nsample, **kwargs):
             t.set_outgroup(t.get_midpoint_outgroup())
 
     elif initalgo == 'random':
-        for i in xrange(nsample):
+        for i in range(nsample):
             t = TreeClass()
             t.populate(len(seq_id), names_library=seq_id)
             tlist.append(t)
@@ -150,7 +151,7 @@ def construct_initial_trees(msa, initalgo, nsample, **kwargs):
         out[mask] = np.concatenate(mat.matrix)
         distance_mat = (out + out.T - np.diag(out.diagonal()), mat.names)
         params.set({}, {}, (dup, loss), 'default')
-        print smap
+        print(smap)
         oritree, specietree, distance_matrix, node_order = TreeUtils.polySolverPreprocessing(
             TreeClass("(" + ",".join(seq_id) + ");"), sptree, distance_mat, smap=smap)
         # it is possible that the required number of tree won't be obtained
@@ -354,7 +355,7 @@ def terminate_crit_fc(iloop, thresh, ga_engine):
     popsize = gpop.popSize
     selection = range(popsize)
     acc = 0
-    for i in xrange(iloop):
+    for i in range(iloop):
         part1, part2 = randomly_split(gpop, selection)
         res1 = is_outlier(part1, thresh)
         res2 = is_outlier(part2, thresh)
@@ -377,7 +378,7 @@ def terminate_crit_wc(iloop, thresh, ga_engine):
     popsize = gpop.popSize
     selection = range(popsize)
     acc = 0
-    for i in xrange(iloop):
+    for i in range(iloop):
         part1, part2 = randomly_split(gpop, selection)
         tree1 = buildconsensus(part1)
         tree2 = buildconsensus(part2)
@@ -547,7 +548,7 @@ if __name__ == '__main__':
                         help="Output file in which best trees should be saved")
     parser.add_argument('--verbose', action="store_true",
                         help="Print GA status at each step")
-
+    parser.add_argument('--raxml_cmd', help="How to call RAxML from the command line. This will be used as the first choice before trying other alternatives if the RAxML libraries cannot be compiled")
     seqlkl = parser.add_argument_group(
         "Sequence likelihood", "Sequence likelihood parameters")
     seqlkl.add_argument('--aln', '-a', dest="align",
@@ -660,6 +661,9 @@ if __name__ == '__main__':
     args = main.parse_args()
 
     # whether or not we should sample trees in the search space
+    if args.raxml_cmd:
+        raxmlBin = [args.raxml_cmd] + raxmlBin
+
     all_cloud = args.popsampling
 
     fmt = args.fmt if args.fmt != 'phylip' else "phylip-relaxed"
@@ -739,7 +743,7 @@ if __name__ == '__main__':
     if args.allsearch:
         time, res = perform_perm(
             treelist, raxmlmod, specmap, args.allsearch, args.timelim)
-        print "time : %f , bestscore : %f" % (time, res[-1][0])
+        print("time : %f , bestscore : %f" % (time, res[-1][0]))
 
     else:
         # stopping criterion management
@@ -748,7 +752,7 @@ if __name__ == '__main__':
         if args.crit or args.verbose or args.plot_lkl:
             step = True
         if args.crit == 'AU':
-            btype, status = check_binaries(['consel'])
+            btype, status = check_binaries(conselBin)
             if not status:
                 raise ValueError(
                     "AU stop criterion not available without consel binaries")

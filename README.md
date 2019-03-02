@@ -7,14 +7,24 @@ GATC find the best tree according to both sequence data and species tree reconci
 ## Installation 
 
 Clone or download the github repository then run: 
-	- ```pip install -r requirements.txt``` to install the required packages, 
-	- ```python setup.py build``` to build the C extension
-	- ```python setup.py install``` to install the package.
 
-Note that you will need to install `swig` and potentially `cython` as well. You will also have to install [consel](http://stat.sys.i.kyoto-u.ac.jp/prog/consel/) (also available from bioconda: https://anaconda.org/bioconda/consel) and `raxml`. 
+- ```pip install -r requirements.txt``` to install the required packages, 
+- ```python setup.py build``` to build the C extension
+- ```python setup.py install``` to install the package.
+
+Note that you will need to install `swig` and potentially `cython` as well. 
+
+### Optional binaries (required for some settings)
+
+For some settings, you will have to install [consel](http://stat.sys.i.kyoto-u.ac.jp/prog/consel/) (also available from bioconda: https://anaconda.org/bioconda/consel) and `raxml`.
+
 `consel` is required if you want to use the `AU stopping criterion` (as in the example command line) and should be available in you path (can be called by using the command line `consel`). 
+
 The `raxml` binary is needed if you want the `SH or AU stopping criteria`. It is used as failback when the provided `RAxML C library files` cannot be compiled (need `swig`)  and are almost the only way currently supported that allow parallel computation of the likelihood.
-GATC with test the following binary endpoints for raxml : `['raxml', 'raxmlHPC', 'raxmlHPC-SSE3', 'raxmlHPC-PTHREADS', 'raxmlHPC-PTHREADS-SSE3', 'raxmlHPC-HYBRID', 'raxmlHPC-HYBRID-SSE3']` before failing. Alternatively you can provide the path to the `raxml` binary using the option `--raxml_cmd`
+
+GATC will test the following binary endpoints for raxml : `['raxml', 'raxmlHPC', 'raxmlHPC-SSE3', 'raxmlHPC-PTHREADS', 'raxmlHPC-PTHREADS-SSE3', 'raxmlHPC-HYBRID', 'raxmlHPC-HYBRID-SSE3']` before failing.
+
+Alternatively you can provide the path to the `raxml` binary using the option `--raxml_cmd`
 
 ### Potential issues during installation. 
 
